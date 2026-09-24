@@ -17,10 +17,13 @@ function ago(ms) {
 // The code is "visto:" + base64url(JSON {u: dashboard URL, t: ingest token}). It is
 // printed by `npm start` (local dashboard) and `npm run cloud` (Cloudflare).
 
+// Forgiving on purpose: with or without "visto:", and whatever a terminal copy adds
+// (spaces, line breaks, quotes, backticks, a trailing dot).
 function parseCode(raw) {
-  const s = raw.trim().replace(/^visto:/i, '');
+  const s = raw.replace(/[\s"'`]/g, '').replace(/^.*visto:/i, '').replace(/[.,;]+$/, '');
   try {
-    const json = JSON.parse(atob(s.replace(/-/g, '+').replace(/_/g, '/')));
+    const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+    const json = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)));
     const url = new URL(json.u);
     if (!/^https?:$/.test(url.protocol) || !json.t) throw new Error();
     return { endpoint: url.origin, token: json.t };

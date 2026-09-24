@@ -18,18 +18,32 @@ never goes to anyone else's server.
 
 ## Quick start (local)
 
-You need [Node.js](https://nodejs.org) 20+ and a Chromium browser (Chrome, Brave, Edge…).
+You need [Node.js](https://nodejs.org) 20+, [Git](https://git-scm.com) and a Chromium
+browser (Chrome, Brave, Edge…).
 
-1. **Get the code and start the dashboard**
+1. **Get the code and start the dashboard.** Open a terminal: *PowerShell* or *Terminal*
+   on Windows, *Terminal* on macOS or Linux. Run these commands one by one:
    ```bash
    git clone https://github.com/rmontestt/visto.git
    cd visto
    npm install
    npm start
    ```
-   `npm start` creates the local database, prints a **connection code** and serves the
-   dashboard at http://localhost:8787. Keep it running while you use it. `npm run connect`
-   prints the code again.
+   - `git clone` creates a `visto` folder wherever the terminal is (your user folder by
+     default).
+   - `cd visto` goes into it. **Every `npm` command runs from inside that folder**, the one
+     that has `package.json`.
+   - `npm install` is only needed the first time, and after updating the code.
+
+   `npm start` does three things:
+   - it creates the local database;
+   - it prints a **connection code** (`visto:…`);
+   - it serves the dashboard at http://localhost:8787.
+
+   **Leave that terminal window open**: the dashboard runs only while it's open, and
+   `Ctrl+C` stops it. Next time, open a terminal and run `cd visto` then `npm start`.
+   `npm run connect` prints the code again. The code can be pasted with or without the
+   `visto:` prefix.
 2. **Install the extension**: open `chrome://extensions` (or `brave://extensions`), turn
    on **Developer mode**, click **Load unpacked** and pick the `extension/` folder.
 3. **Connect it**: click the Visto icon, paste the connection code, click **Connect** and
@@ -289,10 +303,19 @@ Local files, all git-ignored:
   `npm run connect -- cloud`).
 - *The full import stopped*: click it again; it resumes. Keep its tab visible, because
   browsers slow down hidden tabs.
-- *`npm`/`npx` can't find `node` in some Windows shells* (`"node" is not recognized…`): run
-  `node scripts/visto.mjs start` directly. If `npm install` fails the same way while
-  installing esbuild or workerd, install without scripts and run their two installers with
-  node:
+- *`npm start` says `"node" is not recognized…` although `node -v` works* (Windows):
+  - Some installer left an entry with a stray quote in your PATH, for example
+    `C:\Program Files\Something"`. npm runs its scripts through `cmd`, and there that
+    quote hides every PATH entry after it, Node.js included.
+  - To fix it: Start → "Edit the system environment variables" → *Environment
+    Variables…* → *Path* (user and system) → *Edit* → remove the stray `"`. Then close
+    and reopen the terminal.
+  - Meanwhile, `node scripts/visto.mjs start` does the same as `npm start`.
+- *`npm start` says the port is in use*: another Visto (or something else) is already on
+  8787. Close that terminal, or start this one on another port (PowerShell:
+  `$env:VISTO_PORT=8788; npm start`).
+- *`npm install` fails the same way* (while installing esbuild or workerd): install
+  without scripts and run their two installers with node:
   ```bash
   npm install --ignore-scripts
   node node_modules/esbuild/install.js
