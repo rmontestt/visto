@@ -147,6 +147,12 @@ function waitForLoad(tabId) {
 async function startDeep() {
   const s = await get('status', {});
   if (s.deep?.running && Date.now() - (s.deep.updatedAt || 0) < 120_000) return { already: true };
+  // History complete but the liked list was cut short: go straight back to the likes.
+  if (s.deep && !s.deep.done && s.deep.phase === 'likes') {
+    await patchDeep({ running: true, error: null, step: 'resuming your liked videos' });
+    runDomPhase('likes');
+    return { started: true };
+  }
   // A run that died mid-history (tab crash, browser closed) resumes from its oldest day.
   const unfinished = s.deep && !s.deep.done && !s.deep.phase;
   const resumeFrom = unfinished ? (s.deep.resumeFrom && s.deep.oldest ? [s.deep.resumeFrom, s.deep.oldest].sort()[0] : s.deep.oldest) : null;

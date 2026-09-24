@@ -298,11 +298,22 @@
   }
 
   function declaredTotal() {
-    // "3354 vídeos" / "3,354 videos" somewhere in the playlist header.
-    const txt = document.querySelector('ytd-browse')?.innerText || '';
-    const m = /([\d.,\s]{1,9})\s*(?:vídeos|videos)\b/i.exec(txt);
-    return m ? Number(m[1].replace(/[^\d]/g, '')) || null : null;
+    // "3,354 videos" / "3354 vídeos" in the playlist header (older and newer layouts).
+    for (const el of document.querySelectorAll('yt-page-header-renderer, ytd-playlist-header-renderer, ytd-browse:not([hidden])')) {
+      const m = /(\d[\d.,\s]{0,8})\s*(?:vídeos|videos)\b/i.exec(el.innerText || '');
+      if (m) return Number(m[1].replace(/[^\d]/g, '')) || null;
+    }
+    return null;
   }
+
+  // The liked list loads 100 videos per batch while you scroll. It is finished when
+  // YouTube shows no continuation spinner any more (videos YouTube hides as unavailable
+  // never load, so the count can end below the declared total). A batch that never
+  // arrives despite nudges for STALL_MS means YouTube stopped serving: that run is
+  // reported as stopped, not finished, so the tab stays open and the next "Full import"
+  // resumes at the likes.
+  const STALL_MS = 90_000;
+  const LOADING = 'ytd-continuation-item-renderer, yt-continuation-item-view-model, tp-yt-paper-spinner[active]';
 
   let domRunning = false;
   async function domLikes() {
@@ -310,27 +321,49 @@
     domRunning = true;
     const sent = new Set();
     const progress = patch => send({ kind: 'deepProgress', patch });
+    let total = null, rounds = 0, finished = false;
     try {
       await sleep(2500);
-      const total = declaredTotal();
-      let stable = 0, rounds = 0;
-      while (stable < 6 && rounds++ < 600) {
-        const items = domPlaylistItems();
-        const fresh = items.filter(it => !sent.has(it.videoId));
+      let lastNew = Date.now(), nudges = 0;
+      while (rounds++ < 3000) {
+        total = total || declaredTotal();
+        const fresh = domPlaylistItems().filter(it => !sent.has(it.videoId));
         if (fresh.length) {
           fresh.forEach(it => sent.add(it.videoId));
           for (let i = 0; i < fresh.length; i += 200) {
             await send({ kind: 'scraped', payload: { likes: { mode: 'baseline', items: fresh.slice(i, i + 200) } } });
           }
-          stable = 0;
-        } else stable++;
+          lastNew = Date.now();
+          nudges = 0;
+        }
         await progress({ likes: sent.size, likesTotal: total, step: `reading liked videos: ${sent.size}${total ? ` of ${total}` : ''}` });
-        if (total && sent.size >= total) break;
+        if (total && sent.size >= total) { finished = true; break; }
+        if (document.hidden) {
+          // Browsers pause hidden tabs: waiting there is not YouTube being stuck.
+          await sleep(1500);
+          lastNew += 1500;
+          continue;
+        }
+        const idle = Date.now() - lastNew;
+        if (!document.querySelector(LOADING) && idle > 8000) { finished = true; break; }
+        if (idle > STALL_MS) break;
+        // Nudge: YouTube loads the next batch when its spinner scrolls into view, so after
+        // a quiet spell scroll up a little and back down to make it fire again.
+        if (idle > 10_000 * (nudges + 1)) {
+          window.scrollBy(0, -1500);
+          await sleep(400);
+          nudges++;
+        }
         window.scrollTo(0, document.documentElement.scrollHeight);
-        await sleep(stable ? 1800 : 1100);
+        await sleep(fresh.length ? 1100 : 1800);
       }
-      await send({ kind: 'scraped', payload: { diag: { deep: true, likesDom: { items: sent.size, total, rounds } } } });
-      await progress({ running: false, done: true, likes: sent.size, step: `finished: ${sent.size}${total ? ` of ${total}` : ''} likes` });
+      await send({ kind: 'scraped', payload: { diag: { deep: true, likesDom: { items: sent.size, total, rounds, finished } } } });
+      if (finished) {
+        await progress({ running: false, done: true, likes: sent.size, step: `finished: ${sent.size}${total ? ` of ${total}` : ''} likes` });
+      } else {
+        await progress({ running: false, error: 'YouTube stopped loading more liked videos',
+          likes: sent.size, step: `stopped at ${sent.size}${total ? ` of ${total}` : ''} likes; click Full import to resume them` });
+      }
     } catch (e) {
       await progress({ running: false, error: e.message, likes: sent.size, step: `reading liked videos failed after ${sent.size}` });
     } finally {

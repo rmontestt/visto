@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Visto · YouTube history collector",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Sends your YouTube watch history, likes and watch time to your own Visto dashboard (local or self-hosted).",
   "permissions": [
     "storage",
