@@ -80,6 +80,7 @@ async function loadOptions() {
 function paintButtons(opts) {
   const any = Object.values(opts).some(Boolean);
   $('deep').disabled = $('deep').dataset.running === '1' || !any;
+  $('update').disabled = $('deep').disabled;
   $('sync').disabled = !any;
   const on = ['history', 'likes', 'favorites'].filter(k => opts[k]).map(k => ({ history: 'history', likes: 'likes', favorites: 'Favorites' })[k]);
   $('deep').textContent = any ? `Full import (${on.join(', ')})` : 'Full import (nothing selected)';
@@ -127,22 +128,27 @@ function showDeep(d) {
   const oldest = d.oldest ? ` · back to ${d.oldest}` : '';
   const running = d.running && Date.now() - (d.updatedAt || 0) <= 120_000;
   $('deep').dataset.running = running ? '1' : '';
+  const what = d.mode === 'update' ? 'Update' : 'Full import';
   if (d.running && !running) {
-    msg(`The import stopped (no progress since ${ago(d.updatedAt)}, ${counts}${oldest}). Click “Full import” to carry on from there.`);
+    msg(`The ${what.toLowerCase()} stopped (no progress since ${ago(d.updatedAt)}, ${counts}${oldest}). Click “${what}” to carry on.`);
   } else if (running) {
-    msg(`Importing… ${d.step || ''}. ${counts}${oldest}. You can close this popup; keep the YouTube tab it opened.`);
+    msg(`${d.mode === 'update' ? 'Updating' : 'Importing'}… ${d.step || ''}. ${counts}${oldest}. You can close this popup; keep the YouTube tab it opened.`);
   } else {
-    msg(d.error ? `Import: ${d.step}. Error: ${d.error}` : `Full import ${ago(d.updatedAt)}: ${d.step || counts}.`);
+    msg(d.error ? `${what}: ${d.step}. Error: ${d.error}` : `${what} ${ago(d.updatedAt)}: ${d.step || counts}.`);
   }
   paintButtons(currentOpts);
 }
 
-$('deep').onclick = async () => {
-  $('deep').disabled = true;
-  msg('A YouTube tab will open and scroll through what you chose by itself. Keep it visible until it finishes; it closes on its own.');
-  const r = await chrome.runtime.sendMessage({ kind: 'deepBackfill' });
-  if (r?.error) { msg(`Could not start: ${r.error}`); $('deep').disabled = false; }
-};
+async function startImport(mode) {
+  $('deep').disabled = $('update').disabled = true;
+  msg(mode === 'update'
+    ? 'A YouTube tab opens briefly to read what is new since your last import; it closes on its own.'
+    : 'A YouTube tab will open and scroll through what you chose by itself. Keep it visible until it finishes; it closes on its own.');
+  const r = await chrome.runtime.sendMessage({ kind: 'deepBackfill', mode });
+  if (r?.error) { msg(`Could not start: ${r.error}`); paintButtons(currentOpts); }
+}
+$('deep').onclick = () => startImport('full');
+$('update').onclick = () => startImport('update');
 
 loadOptions();
 refresh();

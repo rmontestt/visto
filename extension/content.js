@@ -126,6 +126,7 @@
     if (fav.items.length) payload.saves = { playlist: status.favorites.name, items: fav.items };
     await send({
       kind: 'scraped',
+      sync: true,
       payload,
       status: { lastSync: { at: Date.now(), via: 'tab', history: history.length, likes: likes.items.length, favorites: fav.items.length }, lastError: null },
     });
@@ -239,8 +240,9 @@
   // Costs no memory and saves its continuation token after every page, so a crash or a
   // closed tab resumes exactly where it stopped. Only if YouTube stops handing out pages
   // early do we fall back to scrolling the real page (domHistory).
+  // An Update passes stopDay: the walk ends at the first page reaching back past it.
   let apiHistoryRunning = false;
-  async function deepHistory({ resume, resumeFrom }) {
+  async function deepHistory({ resume, resumeFrom, stopDay }) {
     if (apiHistoryRunning) return;
     apiHistoryRunning = true;
     const progress = patch => send({ kind: 'deepProgress', patch });
@@ -252,7 +254,11 @@
         onPage: async (items, p, ctx) => {
           const history = P.historyItems(items);
           h += history.length;
-          for (const it of history) if (!oldest || it.day < oldest) oldest = it.day;
+          let pageOldest = null;
+          for (const it of history) {
+            if (!oldest || it.day < oldest) oldest = it.day;
+            if (!pageOldest || it.day < pageOldest) pageOldest = it.day;
+          }
           if (history.length) await send({ kind: 'scraped', payload: { history } });
           await progress({
             history: h, oldest,
@@ -263,6 +269,7 @@
           // throttles those to one per minute, which stalls the walk. The request and
           // message round trips already space pages out.
           if (!document.hidden) await sleep(250);
+          if (stopDay && pageOldest && pageOldest < stopDay) return 'stop';
         },
       });
       stop = r.diag?.stop;
@@ -272,8 +279,13 @@
     } finally {
       apiHistoryRunning = false;
     }
-    if (stop?.reason === 'no-continuation') {
-      await progress({ phaseDone: 'history', apiResume: null, history: h, oldest, step: 'history complete' });
+    if (stop?.reason === 'no-continuation' || stop?.reason === 'caught-up') {
+      await progress({ phaseDone: 'history', apiResume: null, history: h, oldest, step: stopDay ? 'history up to date' : 'history complete' });
+      return;
+    }
+    if (stopDay) {
+      // An Update only reads a few pages: if paging broke, just say so (nothing is lost).
+      await progress({ running: false, error: `the history read stopped (${stop?.reason})`, history: h, step: 'history update stopped; click Update again, or run a Full import' });
       return;
     }
     // Paging broke (error, empty page...): scroll the page from the oldest day reached.
@@ -336,12 +348,19 @@
     favorites: { label: 'Favorites', payload: (items, name) => ({ saves: { playlist: name, items } }) },
   };
 
+  // An Update stops at the first batch made of videos sent before (the lists are newest
+  // first); without that memory yet (first run), it reads the whole list.
+  const KNOWN_ENOUGH = 10;
+
   let domRunning = false;
-  async function domPlaylist({ what, name }) {
+  async function domPlaylist({ what, name, update }) {
     if (domRunning) return;
     domRunning = true;
     const list = LISTS[what];
     const sent = new Set();
+    const knownIds = update ? ((await chrome.storage.local.get('known')).known?.[what] || []) : [];
+    const known = knownIds.length ? new Set(knownIds) : null;
+    let added = 0;
     const progress = patch => send({ kind: 'deepProgress', patch });
     let total = null, rounds = 0, finished = false;
     try {
@@ -350,15 +369,20 @@
       while (rounds++ < 3000) {
         total = total || declaredTotal();
         const fresh = domPlaylistItems().filter(it => !sent.has(it.videoId));
+        const unseen = known ? fresh.filter(it => !known.has(it.videoId)) : fresh;
         if (fresh.length) {
           fresh.forEach(it => sent.add(it.videoId));
-          for (let i = 0; i < fresh.length; i += 200) {
-            await send({ kind: 'scraped', payload: list.payload(fresh.slice(i, i + 200), name) });
+          for (let i = 0; i < unseen.length; i += 200) {
+            await send({ kind: 'scraped', payload: list.payload(unseen.slice(i, i + 200), name) });
           }
+          added += unseen.length;
           lastNew = Date.now();
           nudges = 0;
         }
-        await progress({ [what]: sent.size, [`${what}Total`]: total, step: `reading ${list.label}: ${sent.size}${total ? ` of ${total}` : ''}` });
+        const count = known ? added : sent.size;
+        await progress({ [what]: count, [`${what}Total`]: total,
+          step: known ? `new ${list.label}: ${added}` : `reading ${list.label}: ${sent.size}${total ? ` of ${total}` : ''}` });
+        if (known && fresh.length - unseen.length >= Math.min(KNOWN_ENOUGH, fresh.length)) { finished = true; break; }
         if (total && sent.size >= total) { finished = true; break; }
         if (document.hidden) {
           // Browsers pause hidden tabs: waiting there is not YouTube being stuck.
@@ -379,9 +403,10 @@
         window.scrollTo(0, document.documentElement.scrollHeight);
         await sleep(fresh.length ? 1100 : 1800);
       }
-      await send({ kind: 'scraped', payload: { diag: { deep: true, [`${what}Dom`]: { items: sent.size, total, rounds, finished } } } });
+      await send({ kind: 'scraped', payload: { diag: { deep: true, [`${what}Dom`]: { items: sent.size, added, total, rounds, finished, update: !!known } } } });
       if (finished) {
-        await progress({ phaseDone: what, [what]: sent.size, step: `${list.label}: ${sent.size}${total ? ` of ${total}` : ''}` });
+        await progress({ phaseDone: what, [what]: known ? added : sent.size,
+          step: known ? `${added} new ${list.label}` : `${list.label}: ${sent.size}${total ? ` of ${total}` : ''}` });
       } else {
         await progress({ running: false, error: `YouTube stopped loading more ${list.label}`,
           [what]: sent.size, step: `stopped at ${sent.size}${total ? ` of ${total}` : ''} ${list.label}; click Full import to resume them` });

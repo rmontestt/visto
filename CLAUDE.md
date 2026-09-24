@@ -49,6 +49,13 @@ this file holds the rules and the traps.
     - Each phase ends with a `phaseDone` progress message, and `afterPhase` starts the
       next one.
     - A phase cut short stays `deep.phase`, and the next Full import resumes there.
+    - **Update** (`deep.mode = 'update'`) runs the same phases but stops early:
+      - the history walk stops at `stopDay`, which is `status.historyCompleteUntil`
+        minus 2 days. That day is set when a history phase finishes, and extended to
+        today by syncs whose first page reaches it (`extendCoverage`);
+      - the lists stop at the first batch of ids already sent (`status`-independent
+        `known.likes` / `known.favorites`, kept by `remember` in `enqueue`);
+      - with no memory yet, it reads everything, like a Full import.
     - Favorites are found by name (`P.FAVORITES`) on /feed/playlists. The playlist URL
       is kept in `status.favorites`.
 - `ingest/` (Python 3.10+; stdlib plus `tzdata` on Windows):

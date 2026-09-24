@@ -43,7 +43,32 @@ function enqueue(payload) {
     const box = await get('outbox', []);
     box.push({ ...payload, client: CLIENT });
     await set({ outbox: box.slice(-OUTBOX_MAX) });
+    await remember(payload);
   }).then(() => chrome.alarms.create('flush-soon', { delayInMinutes: 0.5 }));
+}
+
+// Ids of likes and favorites already sent: an Update stops when it reaches them.
+async function remember(payload) {
+  const add = { likes: payload.likes?.items, favorites: payload.saves?.items };
+  if (!add.likes?.length && !add.favorites?.length) return;
+  const known = await get('known', {});
+  for (const k of ['likes', 'favorites']) {
+    if (!add[k]?.length) continue;
+    const ids = new Set(known[k] || []);
+    for (const it of add[k]) ids.add(it.videoId);
+    known[k] = [...ids];
+  }
+  await set({ known });
+}
+
+// History is known complete from the start up to `historyCompleteUntil` (set when a Full
+// import or an Update finishes). A sync whose first page reaches back to that day
+// extends it to today, so the next Update only reads what came after.
+async function extendCoverage(history) {
+  if (!history?.length) return;
+  const oldest = history.reduce((m, it) => (it.day < m ? it.day : m), history[0].day);
+  const { historyCompleteUntil: until } = await get('status', {});
+  if (until && oldest <= until) await patchStatus({ historyCompleteUntil: P.localDay(new Date()) });
 }
 
 // Live sessions are merged by (video, start) so heartbeats never pile up.
@@ -120,6 +145,7 @@ async function scrapeAll(via) {
   if (opts.likes) payload.likes = { mode: 'recent', items: likes.items };
   if (fav.items.length) payload.saves = { playlist: favorites.name, items: fav.items };
   await enqueue(payload);
+  await extendCoverage(history);
   await patchStatus({
     lastSync: { at: Date.now(), via, history: history.length, likes: likes.items.length, favorites: fav.items.length },
     lastError: likes.error ? `likes: ${likes.error.message}` : null,
@@ -140,7 +166,9 @@ async function syncFromBackground() {
   }
 }
 
-// ---------- Full import: history, then likes, then Favorites --------------------
+// ---------- Full import / Update: history, then likes, then Favorites --------------
+// Update is the same walk, stopping at what was imported before: the history at the
+// day it was known complete up to (minus a margin), the lists at videos sent before.
 // YouTube's pages only load older rows while you scroll them, and pause that in hidden
 // tabs. So the worker opens ONE foreground tab and walks it through the phases the
 // popup's switches allow; content.js reads each page and reports progress as
@@ -160,13 +188,30 @@ function waitForLoad(tabId) {
   });
 }
 
-async function startDeep() {
+const OVERLAP_DAYS = 2; // an Update re-reads the last days it already had, to be safe
+
+async function startDeep(mode = 'full') {
   const s = await get('status', {});
   if (s.deep?.running && Date.now() - (s.deep.updatedAt || 0) < 120_000) return { already: true };
   const opts = await getOptions();
   const phases = ORDER.filter(p => opts[p]);
   if (!phases.length) return { error: 'turn on at least one kind of data to import' };
-  const d = s.deep;
+  const today = P.localDay(new Date());
+  if (mode === 'update') {
+    // Before 1.2.0 nothing recorded this: a finished Full import that read the history counts.
+    const lastFull = s.deep?.done && s.deep.mode !== 'update' && s.deep.phases?.includes('history') && s.deep.startedAt;
+    const until = s.historyCompleteUntil || (lastFull ? P.localDay(new Date(s.deep.startedAt)) : null);
+    const stop = until ? new Date(`${until}T12:00:00`) : null;
+    stop?.setDate(stop.getDate() - OVERLAP_DAYS);
+    await patchStatus({ deep: {
+      mode: 'update', running: true, startedAt: Date.now(), startedDay: today, updatedAt: Date.now(), phases, phase: phases[0],
+      history: 0, likes: 0, favorites: 0, oldest: null, stopDay: stop ? P.localDay(stop) : null,
+      step: `checking your ${LABEL[phases[0]]} for anything new`,
+    } });
+    runDomPhase(phases[0]);
+    return { started: true };
+  }
+  const d = s.deep?.mode === 'update' ? null : s.deep; // an unfinished Update just runs again
   // A list phase that was cut short: go straight back to it.
   if (d && !d.done && d.phase && d.phase !== 'history' && phases.includes(d.phase)) {
     await patchDeep({ running: true, error: null, phases, step: `resuming your ${LABEL[d.phase]}` });
@@ -178,7 +223,8 @@ async function startDeep() {
   const resumeFrom = unfinished ? (d.resumeFrom && d.oldest ? [d.resumeFrom, d.oldest].sort()[0] : d.oldest) : null;
   const apiResume = unfinished ? d.apiResume || null : null;
   await patchStatus({ deep: {
-    running: true, startedAt: Date.now(), updatedAt: Date.now(), phases, phase: phases[0],
+    mode: 'full', running: true, startedAt: Date.now(), startedDay: unfinished ? d.startedDay || today : today,
+    updatedAt: Date.now(), phases, phase: phases[0],
     history: 0, likes: 0, favorites: 0, oldest: null, resumeFrom, apiResume,
     step: apiResume ? 'resuming your history where it stopped' : `opening your ${LABEL[phases[0]]}`,
   } });
@@ -206,24 +252,30 @@ async function openInTab(url) {
 async function runDomPhase(name) {
   try {
     await patchDeep({ phase: name, step: `loading your ${LABEL[name]}` });
+    const { deep: cur = {}, favorites: knownFav } = await get('status', {});
+    const update = cur.mode === 'update';
     if (name === 'history') {
       const tab = await openInTab(P.HISTORY_URL);
-      const fresh = (await get('status', {})).deep || {};
-      await chrome.tabs.sendMessage(tab.id, { kind: 'deepHistory', resume: fresh.apiResume, resumeFrom: fresh.resumeFrom });
+      await chrome.tabs.sendMessage(tab.id, update
+        ? { kind: 'deepHistory', stopDay: cur.stopDay }
+        : { kind: 'deepHistory', resume: cur.apiResume, resumeFrom: cur.resumeFrom });
     } else if (name === 'likes') {
       const tab = await openInTab(P.LIKES_URL);
-      await chrome.tabs.sendMessage(tab.id, { kind: 'domPlaylist', what: 'likes' });
+      await chrome.tabs.sendMessage(tab.id, { kind: 'domPlaylist', what: 'likes', update });
     } else if (name === 'favorites') {
-      await patchDeep({ step: 'looking for your Favorites playlist' });
-      let tab = await openInTab(P.PLAYLISTS_URL);
-      const fav = await chrome.tabs.sendMessage(tab.id, { kind: 'findFavorites' });
+      let tab, fav = update && knownFav?.url ? knownFav : null;
+      if (!fav) {
+        await patchDeep({ step: 'looking for your Favorites playlist' });
+        tab = await openInTab(P.PLAYLISTS_URL);
+        fav = await chrome.tabs.sendMessage(tab.id, { kind: 'findFavorites' });
+      }
       if (!fav?.url) {
         await patchDeep({ favoritesMissing: true, step: 'no playlist called Favorites found; skipped' });
         return afterPhase('favorites');
       }
       await patchStatus({ favorites: fav }); // the hourly sync reads its first page too
       tab = await openInTab(fav.url);
-      await chrome.tabs.sendMessage(tab.id, { kind: 'domPlaylist', what: 'favorites', name: fav.name });
+      await chrome.tabs.sendMessage(tab.id, { kind: 'domPlaylist', what: 'favorites', name: fav.name, update });
     }
   } catch (e) {
     await patchDeep({ running: false, error: e.message, step: `could not open the page (${LABEL[name]})` });
@@ -234,11 +286,15 @@ async function runDomPhase(name) {
 async function afterPhase(done) {
   await flush();
   const { deep } = await get('status', {});
+  // The history walk reached its end (Full import) or caught up (Update): it is complete
+  // up to the day the run started.
+  if (done === 'history' && deep?.startedDay) await patchStatus({ historyCompleteUntil: deep.startedDay });
   const phases = deep?.phases || ORDER;
   const next = phases[phases.indexOf(done) + 1];
   if (next) return runDomPhase(next);
-  const parts = phases.map(p => `${deep?.[p] ?? 0} ${LABEL[p]}`).join(' · ');
-  await patchDeep({ running: false, done: true, step: `finished: ${parts}` });
+  const update = deep?.mode === 'update';
+  const parts = phases.map(p => `${update ? '+' : ''}${deep?.[p] ?? 0} ${LABEL[p]}`).join(' · ');
+  await patchDeep({ running: false, done: true, step: `${update ? 'up to date' : 'finished'}: ${parts}` });
   if (deep?.tabId) chrome.tabs.remove(deep.tabId).catch(() => {});
 }
 
@@ -257,6 +313,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       case 'event': if ((await getOptions()).likes) await enqueue({ events: [msg.event] }); return { ok: true };
       case 'scraped': {
         await enqueue(msg.payload);
+        if (msg.sync) await extendCoverage(msg.payload.history);
         if (msg.status) await patchStatus(msg.status);
         return { ok: true };
       }
@@ -264,7 +321,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         const s = await get('status', {});
         return { yes: !s.lastSync || Date.now() - s.lastSync.at > PAGE_SYNC_AFTER_MS };
       }
-      case 'deepBackfill': return startDeep();
+      case 'deepBackfill': return startDeep(msg.mode === 'update' ? 'update' : 'full');
       case 'deepProgress': {
         const { phaseDone, ...patch } = msg.patch;
         await patchDeep(patch);

@@ -245,8 +245,9 @@
    * Scrape a YouTube page (history feed or a playlist) plus up to `pages - 1`
    * continuations. `onPage(items)` streams results for long backfills.
    */
+  // onPage may return 'stop' to end the walk early (an Update that caught up).
   async function scrape(url, { pages = 1, onPage, start } = {}) {
-    let cfg, data, items, continuation, section = null;
+    let cfg, data, items, continuation, section = null, caughtUp = false;
     if (start?.token && start.cfg) {
       // Resume an interrupted walk straight from its saved continuation token.
       cfg = start.cfg;
@@ -263,17 +264,17 @@
       if (!data) throw Object.assign(new Error('ytInitialData not found'), { code: 'parse' });
       ({ items, continuation } = extractItems(data));
       section = items[items.length - 1]?.section ?? null;
-      await onPage?.(items, 1, { continuation, cfg, section });
+      caughtUp = (await onPage?.(items, 1, { continuation, cfg, section })) === 'stop';
     }
     // Streaming callers get every page through onPage; only keep items for the rest.
     const all = onPage ? null : [...items];
     let total = items.length;
     let diag = data && !items.length ? { url: url.replace(/\?.*/, ''), shape: shape(data) } : null;
     // Why paging stopped, as key paths only (no values): lets us fix drift remotely.
-    let stop = { reason: continuation ? 'page-limit' : 'no-continuation', pages: 1 };
+    let stop = caughtUp ? { reason: 'caught-up', pages: 1 } : { reason: continuation ? 'page-limit' : 'no-continuation', pages: 1 };
     if (!continuation && pages > 1 && data) stop.paths = continuationPaths(data);
     let lastJson = data;
-    for (let p = 2; p <= pages && continuation; p++) {
+    for (let p = 2; p <= pages && continuation && !caughtUp; p++) {
       let json;
       try {
         json = await browseContinuation(continuation, cfg);
@@ -293,7 +294,10 @@
       section = next.items[next.items.length - 1].section ?? section;
       total += next.items.length;
       all?.push(...next.items);
-      await onPage?.(next.items, p, { continuation, cfg, section });
+      if ((await onPage?.(next.items, p, { continuation, cfg, section })) === 'stop') {
+        caughtUp = true;
+        stop = { reason: 'caught-up', pages: p };
+      }
     }
     // Stopped for lack of a token on a later page too: record where tokens-ish keys sit.
     if (stop.reason === 'no-continuation' && !stop.paths && pages > 1 && lastJson) stop.paths = continuationPaths(lastJson);

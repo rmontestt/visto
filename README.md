@@ -51,6 +51,12 @@ your browser is open. If the local dashboard isn't running, it keeps everything 
 sends it later. Turning a switch off stops collecting that kind of data; what was already
 imported stays.
 
+**Coming back after a while?** Click **Update (only what's new)**. It reads the history
+back to the day your last import already covered (with a two-day overlap), and the liked
+videos and Favorites down to the first videos it had already sent. It takes seconds
+instead of minutes. **Full import** is still there to re-read everything; nothing is ever
+duplicated.
+
 The dashboard shows only what you collect. Someone who imports only likes, or history and
 Favorites, sees a dashboard made of exactly that.
 
@@ -136,7 +142,7 @@ Once the dashboard is public, its API answers are cached for 10 minutes to save 
 | Source | What it gives | Limits |
 |---|---|---|
 | **Extension · Full import** | Your whole youtube.com/feed/history, from all your devices: one row per (video, day) | Day only, no time. The history page dates views in UTC and ends where YouTube stops keeping it (for long-time users, around late 2016) |
-| **Extension · hourly sync** | The first page of your history and of your liked videos | If the browser stays closed for many days, a gap can appear; a new full import fills it |
+| **Extension · hourly sync** | The first page of your history, liked videos and Favorites | If the browser stays closed for many days, a gap can appear; **Update** fills it |
 | **Extension · live** | Seconds you actually played, and like/unlike clicks, with exact times | Only what you watch in that browser |
 | **Extension · liked videos** | Every like, read by scrolling the real "Liked videos" page | Unavailable videos are hidden by YouTube. The page doesn't say when you liked each one, so likes from the first import have no date |
 | **Extension · Favorites** | Your playlist called Favorites (or Favoritos, Favoris…), found on your playlists page and scrolled the same way | No date added (Takeout has it) |
@@ -295,8 +301,6 @@ Local files, all git-ignored:
 
 ## Roadmap
 
-- An incremental hourly sync that walks back to the last synced day, so long browser
-  breaks leave no gaps.
 - Importing Takeout from the dashboard itself, with no Python.
 
 ## License

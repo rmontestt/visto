@@ -72,13 +72,14 @@
       <dt>Background reads</dt><dd id="bg">—</dd>
     </dl>
     <fieldset>
-      <legend>What to collect (hourly sync and Full import)</legend>
+      <legend>What to collect (sync, Update and Full import)</legend>
       <label class="switch"><span>Watch history<small>Every video you watch, and watch time in this browser</small></span><input type="checkbox" data-opt="history" checked></label>
       <label class="switch"><span>Likes<small>Your liked videos</small></span><input type="checkbox" data-opt="likes" checked></label>
       <label class="switch"><span>Favorites<small>Your playlist called Favorites</small></span><input type="checkbox" data-opt="favorites" checked></label>
     </fieldset>
     <p class="err" id="err" hidden></p>
     <button id="sync" class="ghost">Sync now</button>
+    <button id="update" title="Reads only what is new since your last import: the history back to the day it already has, the lists back to videos it already sent">Update (only what's new)</button>
     <button id="deep" class="ghost">Full import</button>
     <div id="msg"></div>
     <div id="deepmsg" class="deep"></div>
