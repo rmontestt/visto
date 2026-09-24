@@ -351,6 +351,15 @@ async function loadChannels(page) {
   markSelected();
 }
 
+// Likes and Favorites read by the extension carry no date (YouTube does not show when
+// you liked or saved something), so a year view cannot place them: say so, and offer
+// the way to see them.
+function undatedNote(r, what) {
+  if (!periodQS() || !r.undated) return '';
+  const lead = r.total ? `${nf.format(r.undated)} more without a date` : `Your ${plural(r.undated, what)} have no date (YouTube doesn't show when)`;
+  return `<p class="note undated">${lead}, so ${r.total ? 'they' : 'they only'} appear under All time. <button class="linkish" data-all-time>See All time</button></p>`;
+}
+
 const pagerHtml = (page, pages) => pages > 1
   ? `<button class="chip" data-page="${page - 1}" ${page ? '' : 'disabled'}>Previous</button><span class="note">${nf.format(page + 1)} / ${nf.format(pages)}</span><button class="chip" data-page="${page + 1}" ${page + 1 < pages ? '' : 'disabled'}>Next</button>`
   : '';
@@ -507,8 +516,8 @@ async function loadSaves(page) {
       <div><a class="t" href="${watchUrl(v.video_id)}" target="_blank" rel="noopener">${esc(v.title || v.video_id)}</a>
       <div class="m">${esc(v.channel_title || '')}</div>
       <div class="m">${v.day ? `saved ${fmtDate(v.day)}` : ''}${v.days_watched ? ` · watched on ${plural(v.days_watched, 'day')}` : ''}${v.liked ? ' · liked' : ''}</div></div></li>`).join('')
-    : '<li class="note" style="display:block">No favorites yet: they arrive with the Google Takeout (YouTube and YouTube Music).</li>';
-  $('#saves-pager').innerHTML = pagerHtml(page, r.pages);
+    : r.undated && periodQS() ? '' : `<li class="note" style="display:block">${periodQS() ? 'No favorites saved in this period.' : 'No favorites yet.'}</li>`;
+  $('#saves-pager').innerHTML = undatedNote(r, 'favorite') + pagerHtml(page, r.pages);
 }
 
 async function loadLikes(page) {
@@ -519,8 +528,8 @@ async function loadLikes(page) {
       <div><a class="t" href="${watchUrl(v.video_id)}" target="_blank" rel="noopener">${esc(v.title || v.video_id)}</a>
       <div class="m">${esc(v.channel_title || '')}</div>
       <div class="m">${v.day ? `liked ${fmtDate(v.day)}` : 'liked before tracking started'}${v.days_watched ? ` · watched on ${plural(v.days_watched, 'day')}` : ''}${v.favorite ? ' · in Favorites' : ''}</div></div></li>`).join('')
-    : `<li class="note" style="display:block">${periodQS() ? 'No dated likes in this period.' : 'No liked videos yet.'}</li>`;
-  $('#likes-pager').innerHTML = pagerHtml(page, r.pages);
+    : r.undated && periodQS() ? '' : `<li class="note" style="display:block">${periodQS() ? 'No likes in this period.' : 'No liked videos yet.'}</li>`;
+  $('#likes-pager').innerHTML = undatedNote(r, 'like') + pagerHtml(page, r.pages);
 }
 
 // "On repeat" follows the most specific date context on screen: a chart selection,
@@ -990,6 +999,10 @@ function wire() {
   $('#channels-pager').addEventListener('click', e => {
     const b = e.target.closest('[data-page]');
     if (b) loadChannels(Number(b.dataset.page)).catch(showError);
+  });
+  // "See All time" in the undated-likes / favorites notes.
+  document.querySelector('.col-side').addEventListener('click', e => {
+    if (e.target.closest('[data-all-time]')) setRange('all').catch(showError);
   });
   $('#likes-pager').addEventListener('click', e => {
     const b = e.target.closest('[data-page]');

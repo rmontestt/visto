@@ -378,10 +378,11 @@ export async function saves(url, env) {
       FROM fav f LEFT JOIN videos v ON v.video_id = f.video_id LEFT JOIN likes l ON l.video_id = f.video_id
       WHERE ${where}
       ORDER BY ${order} LIMIT ?3 OFFSET ?4`).bind(from, to, size, page * size),
-    db.prepare(`WITH ${fav} SELECT COUNT(*) AS n FROM fav f WHERE ${where}`).bind(from, to),
+    db.prepare(`WITH ${fav} SELECT COUNT(*) AS n, (SELECT COUNT(*) FROM fav WHERE day IS NULL) AS undated
+                FROM fav f WHERE ${where}`).bind(from, to),
   ]);
-  const total = count.results[0].n;
-  return json({ items: items.results, total, page, pages: Math.ceil(total / size) });
+  const { n: total, undated } = count.results[0];
+  return json({ items: items.results, total, undated, page, pages: Math.ceil(total / size) });
 }
 
 /**
@@ -404,10 +405,11 @@ export async function likesList(url, env) {
       FROM likes l LEFT JOIN videos v ON v.video_id = l.video_id
       WHERE ${where}
       ORDER BY l.liked_at IS NULL, l.liked_at DESC, l.rowid ASC LIMIT ?3 OFFSET ?4`).bind(from, to, size, page * size),
-    db.prepare(`SELECT COUNT(*) AS n FROM likes l WHERE ${where}`).bind(from, to),
+    db.prepare(`SELECT COUNT(*) AS n, (SELECT COUNT(*) FROM likes l WHERE l.day IS NULL ${tf}) AS undated
+                FROM likes l WHERE ${where}`).bind(from, to),
   ]);
-  const total = count.results[0].n;
-  return json({ items: items.results, total, page, pages: Math.ceil(total / size) });
+  const { n: total, undated } = count.results[0];
+  return json({ items: items.results, total, undated, page, pages: Math.ceil(total / size) });
 }
 
 /** GET /api/themes - theme mix per year over the whole history (range-independent). */

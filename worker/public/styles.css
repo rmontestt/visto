@@ -405,3 +405,8 @@ details.fold[open] > summary { margin-bottom: 12px; }
 
 /* sections the imported data cannot fill are hidden (showPanels); keep that over any display rule */
 [hidden] { display: none !important; }
+
+/* undated likes / favorites under a year: the note sits where the list would be */
+.pager:has(.undated) { flex-wrap: wrap; }
+.pager .undated { flex-basis: 100%; margin: 0 0 4px; }
+.undated .linkish { text-decoration: underline; }
