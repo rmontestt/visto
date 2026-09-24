@@ -303,6 +303,12 @@ Local files, all git-ignored:
   `npm run connect -- cloud`).
 - *The full import stopped*: click it again; it resumes. Keep its tab visible, because
   browsers slow down hidden tabs.
+- *PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled`*
+  (Windows): PowerShell blocks `.ps1` scripts by default, and `npm` starts through one.
+  - Type `npm.cmd` instead of `npm` (`npm.cmd install`, `npm.cmd start`), or run
+    `node scripts/visto.mjs start`.
+  - To keep typing `npm`, allow local scripts for your user:
+    `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 - *`npm start` says `"node" is not recognized…` although `node -v` works* (Windows):
   - Some installer left an entry with a stray quote in your PATH, for example
     `C:\Program Files\Something"`. npm runs its scripts through `cmd`, and there that
