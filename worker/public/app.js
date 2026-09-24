@@ -173,7 +173,9 @@ function renderFigures(s) {
         ? `${hours(s.time.measured_s)} measured in the browser, the rest from the gaps between videos`
         : `from the gap between one video and the next${s.time.untimed_n ? ` (${nf.format(s.time.untimed_n)} without a time: their length)` : ''}` },
     { k: 'Channels', icon: 'channel', v: compact(k.channels), s: `${plural(k.uniq, 'different video')}` },
-    s.meta.n_likes ? { k: 'Likes', icon: 'like', v: compact(s.likes.in_range), s: `${nf.format(s.likes.watched_liked)} of the videos you watched have your like` } : null,
+    // All time counts every like (the extension's have no date); a year only the dated ones.
+    s.meta.n_likes ? { k: 'Likes', icon: 'like', v: compact(state.range === 'all' ? s.likes.total : s.likes.in_range),
+      s: `${nf.format(s.likes.watched_liked)} of the videos you watched have your like` } : null,
     s.meta.has_themes ? topThemeFig(s) : null,
     // A past year has no running streak: show its best one instead.
     s.range.to < s.range.today
@@ -364,14 +366,18 @@ const pagerHtml = (page, pages) => pages > 1
   ? `<button class="chip" data-page="${page - 1}" ${page ? '' : 'disabled'}>Previous</button><span class="note">${nf.format(page + 1)} / ${nf.format(pages)}</span><button class="chip" data-page="${page + 1}" ${page + 1 < pages ? '' : 'disabled'}>Next</button>`
   : '';
 
+const MIN_TIMED = 20;
 function renderHours(s) {
   const grid = Array.from({ length: 7 }, () => new Array(24).fill(0));
   for (const r of s.hourWeek) if (r.dow != null && r.hour != null) grid[r.dow][r.hour] = r.n;
   const total = s.hourWeek.reduce((a, r) => a + r.n, 0);
   const el = $('#hours');
-  if (!total) {
+  // The history page only gives the day; times come from Takeout or from watching with
+  // the extension. A handful of dots in a 7x24 grid reads as empty, so wait for enough.
+  if (total < MIN_TIMED) {
     el.innerHTML = '';
-    $('#hours-note').textContent = 'Shows up once there are timed views: from Google Takeout or from what you watch in the browser.';
+    $('#hours-note').textContent = `${total ? `Only ${plural(total, 'view')} with a known time in this period so far. ` : ''}`
+      + 'Times come from Google Takeout (My Activity) and from what you watch in the browser with the extension; the chart appears once there are enough.';
     return;
   }
   const W = Math.max(280, el.clientWidth || 380), labelW = 16, gap = 2;
