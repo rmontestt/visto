@@ -35,13 +35,20 @@ browser (Chrome, Brave, Edge…).
      that has `package.json`.
    - `npm install` is only needed the first time, and after updating the code.
 
+   > **On Windows, if `npm` gives an error in PowerShell** (for example `npm.ps1 cannot be
+   > loaded because running scripts is disabled`), type **`npm.cmd`** instead of `npm`:
+   > `npm.cmd install`, `npm.cmd start`, `npm.cmd run connect`… It's the same command,
+   > without PowerShell's script block. If that fails too, see
+   > [Troubleshooting](#troubleshooting).
+
    `npm start` does three things:
    - it creates the local database;
    - it prints a **connection code** (`visto:…`);
    - it serves the dashboard at http://localhost:8787.
 
    **Leave that terminal window open**: the dashboard runs only while it's open, and
-   `Ctrl+C` stops it. Next time, open a terminal and run `cd visto` then `npm start`.
+   `Ctrl+C` stops it. Next time, open a terminal and run `cd visto` then `npm start`
+   (`npm.cmd start` on Windows if plain `npm` failed).
    `npm run connect` prints the code again. The code can be pasted with or without the
    `visto:` prefix.
 2. **Install the extension**: open `chrome://extensions` (or `brave://extensions`), turn
@@ -296,7 +303,8 @@ Local files, all git-ignored:
   extend `MONTHS`/`WEEKDAYS` in `extension/parser.js`, and the verb prefixes in
   `ingest/takeout_import.py` for Takeout.
 
-**Troubleshooting**
+### Troubleshooting
+
 - *The popup says "dashboard unreachable"*: `npm start` isn't running. Nothing is lost:
   it's queued.
 - *"the dashboard rejected the token"*: paste a fresh code from `npm run connect` (or

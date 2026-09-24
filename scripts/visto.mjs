@@ -6,6 +6,9 @@
 //   npm run cloud              create / update your own deployment on Cloudflare
 //   npm run wrangler -- ...    any wrangler command with the right --config
 //
+// On Windows, if PowerShell refuses `npm` (npm.ps1 blocked), type `npm.cmd` instead
+// (`npm.cmd start`), or call this file directly: `node scripts/visto.mjs start`.
+//
 // Local mode keeps everything on this computer: the extension sends to localhost, the
 // data lives in .wrangler/state, and this script triggers the metadata enrichment the
 // cron would run in the cloud. Cloud mode writes worker/wrangler.local.jsonc (your
@@ -60,7 +63,7 @@ function wrangler(args, { config = TEMPLATE, capture = false, input } = {}) {
 
 function needInstall() {
   if (!existsSync(WRANGLER)) {
-    console.error('wrangler is not installed yet: run `npm install` first.');
+    console.error('wrangler is not installed yet: run `npm install` first (`npm.cmd install` on Windows if `npm` gives an error).');
     process.exit(1);
   }
 }
