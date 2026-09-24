@@ -17,6 +17,25 @@ const CHUNK = 200; // statements per D1 batch
  * }
  * Every write is idempotent (dedup keys / upserts), so the extension may resend freely.
  */
+/**
+ * GET /api/ingest - totals for the extension popup: videos watched (distinct video-day
+ * pairs, the dashboard's unit), likes, favorites and the history's first and last day.
+ * Cached per isolate for a minute: the popup asks each time it opens.
+ */
+let totalsMemo = null;
+export async function ingestTotals(env) {
+  if (totalsMemo && Date.now() - totalsMemo.at < 60_000) return json(totalsMemo.body);
+  const row = await env.DB.prepare(`
+    SELECT (SELECT COUNT(*) FROM (SELECT 1 FROM watches GROUP BY day, video_id)) AS videos,
+           (SELECT COUNT(*) FROM likes) AS likes,
+           (SELECT COUNT(DISTINCT video_id) FROM saves
+             WHERE lower(playlist_title) IN ('favorites', 'favourites', 'favoritos', 'favoris', 'preferiti', 'favoriten')) AS favorites,
+           (SELECT MIN(day) FROM watches) AS first_day,
+           (SELECT MAX(day) FROM watches) AS last_day`).first();
+  totalsMemo = { at: Date.now(), body: row };
+  return json(row);
+}
+
 export async function handleIngest(request, env) {
   let body;
   try { body = await request.json(); } catch { return json({ error: 'bad json' }, 400); }
@@ -133,6 +152,7 @@ export async function handleIngest(request, env) {
   stmts.push(log.bind(now, 'ping', 0, clampStr(body.client, 100)));
 
   for (let i = 0; i < stmts.length; i += CHUNK) await env.DB.batch(stmts.slice(i, i + CHUNK));
+  totalsMemo = null;
   return json({ ok: true, counts });
 }
 

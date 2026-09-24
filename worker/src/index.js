@@ -1,5 +1,5 @@
 import { json, hmacHex, safeEqual } from './util.js';
-import { handleIngest } from './ingest.js';
+import { handleIngest, ingestTotals } from './ingest.js';
 import { summary, calendar, day, search, videos, rewatched, saves, themesByYear, subs, channels, likesList } from './stats.js';
 import { enrich } from './enrich.js';
 
@@ -33,14 +33,15 @@ async function route(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
 
-    // Extension -> Worker. Bearer token, never the dashboard cookie.
+    // Extension -> Worker. Bearer token, never the dashboard cookie. POST sends data;
+    // GET returns what the dashboard holds, for the popup.
     if (pathname === '/api/ingest') {
-      if (request.method !== 'POST') return json({ error: 'method' }, 405);
+      if (request.method !== 'POST' && request.method !== 'GET') return json({ error: 'method' }, 405);
       const auth = request.headers.get('authorization') || '';
       if (!env.INGEST_TOKEN || !(await safeEqual(auth.replace(/^Bearer\s+/i, ''), env.INGEST_TOKEN))) {
         return json({ error: 'unauthorized' }, 401);
       }
-      return handleIngest(request, env);
+      return request.method === 'GET' ? ingestTotals(env) : handleIngest(request, env);
     }
 
     if (pathname === '/login') {

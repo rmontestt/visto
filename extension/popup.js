@@ -98,6 +98,20 @@ document.querySelectorAll('[data-opt]').forEach(x => x.addEventListener('change'
 
 // ---------- status ---------------------------------------------------------------
 
+// Totals come from the dashboard itself: asked when the popup opens, every 20 s while an
+// import runs, and after a sync or an import ends.
+const nf = new Intl.NumberFormat('en-US');
+let totalsAt = 0, lastRunning = false;
+async function loadTotals() {
+  totalsAt = Date.now();
+  const r = await chrome.runtime.sendMessage({ kind: 'totals' });
+  const t = r?.totals;
+  $('totals').textContent = t
+    ? `${nf.format(t.videos)} videos · ${nf.format(t.likes)} likes · ${nf.format(t.favorites)} favorites`
+    : `— (${r?.error || 'unavailable'})`;
+  $('totals').title = t?.first_day ? `History from ${t.first_day} to ${t.last_day}` : '';
+}
+
 async function refresh() {
   const r = await chrome.runtime.sendMessage({ kind: 'status' });
   if (!r.endpoint) { if ($('connect').hidden) showConnect(false); return; }
@@ -105,22 +119,24 @@ async function refresh() {
   const s = r.status || {};
   $('where').textContent = new URL(r.endpoint).host;
   $('last').textContent = s.lastSync ? `${ago(s.lastSync.at)} · ${s.lastSync.via}` : 'never';
-  const ls = s.lastSync || {};
-  $('read').textContent = s.lastSync ? `${ls.history ?? 0} history · ${ls.likes ?? 0} likes · ${ls.favorites ?? 0} fav.` : '—';
   $('queued').textContent = r.queued;
   $('bg').textContent = s.bgWorks === undefined ? '—' : s.bgWorks ? 'working' : 'no (uses YouTube tabs)';
   $('err').hidden = !s.lastError;
   $('err').textContent = s.lastError || '';
   $('dash').href = r.endpoint;
   showDeep(s.deep);
+  const running = !!s.deep?.running && Date.now() - (s.deep.updatedAt || 0) <= 120_000;
+  if (!totalsAt || (running && Date.now() - totalsAt > 20_000) || (lastRunning && !running)) loadTotals();
+  lastRunning = running;
 }
 
 $('sync').onclick = async () => {
   $('sync').disabled = true;
   msg('Reading the latest videos…');
   const r = await chrome.runtime.sendMessage({ kind: 'syncNow' });
-  msg(r.error ? `Error: ${r.error}` : `Done: ${r.history} videos, ${r.likes} likes, ${r.favorites} favorites.`);
+  msg(r.error ? `Error: ${r.error}` : 'Synced: checked the latest videos, likes and favorites.');
   $('sync').disabled = false;
+  setTimeout(loadTotals, 1500); // the sync's batch reaches the dashboard first
   refresh();
 };
 

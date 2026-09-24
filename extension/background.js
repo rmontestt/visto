@@ -339,6 +339,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         const [status, box, sessions, cfg] = await Promise.all([get('status', {}), get('outbox', []), get('sessions', {}), get('settings', null)]);
         return { status, queued: box.length + Object.keys(sessions).length, endpoint: cfg?.endpoint || null };
       }
+      case 'totals': {
+        // What the dashboard holds (GET /api/ingest), for the popup.
+        const cfg = await get('settings', null);
+        if (!cfg?.endpoint) return { error: 'not connected' };
+        try {
+          const res = await fetch(`${cfg.endpoint}/api/ingest`, { headers: { authorization: `Bearer ${cfg.token}` } });
+          if (!res.ok) return { error: res.status === 405 ? 'update your dashboard to see totals' : `HTTP ${res.status}` };
+          return { totals: await res.json() };
+        } catch {
+          return { error: 'dashboard unreachable' };
+        }
+      }
       case 'connect': {
         // Check the code against the dashboard before keeping it (an empty ingest is a ping).
         await post({ client: CLIENT }, msg.settings);
