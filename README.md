@@ -247,6 +247,8 @@ Local files, all git-ignored:
   http://localhost:8787 directly. Locally, `DEV_NO_AUTH=1` skips the password.
 - After changing the extension, click reload in `chrome://extensions` and reload any open
   YouTube tabs.
+- The extension icons in `extension/icons/` are drawn from the logo geometry
+  (`worker/public/favicon.svg`) by `python scripts/make_icons.py`.
 - For quick queries, open the local database with any SQLite tool while the server is
   stopped: `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/*.sqlite`.
 - Cloud:
@@ -265,8 +267,15 @@ Local files, all git-ignored:
   `npm run connect -- cloud`).
 - *The full import stopped*: click it again; it resumes. Keep its tab visible, because
   browsers slow down hidden tabs.
-- *`npx`/`npm` can't find `node` in some Windows shells*: run `node scripts/visto.mjs start`
-  directly.
+- *`npm`/`npx` can't find `node` in some Windows shells* (`"node" is not recognized…`): run
+  `node scripts/visto.mjs start` directly. If `npm install` fails the same way while
+  installing esbuild or workerd, install without scripts and run their two installers with
+  node:
+  ```bash
+  npm install --ignore-scripts
+  node node_modules/esbuild/install.js
+  node node_modules/workerd/install.js
+  ```
 
 ## Roadmap
 

@@ -157,7 +157,7 @@ button:hover{opacity:.88}
 .err{color:#ff4e45;font-size:13px;margin-top:10px}
 </style></head><body>
 <form method="post" action="/login">
-  <div class="logo"><svg viewBox="0 0 30 21" aria-hidden="true"><rect width="30" height="21" rx="6" fill="#ff0033"/><path d="M12 6.2v8.6l7.2-4.3z" fill="#fff"/></svg><b>Visto</b></div>
+  <div class="logo"><svg viewBox="0 0 30 21" aria-hidden="true"><rect width="30" height="21" rx="6" fill="#ff0033"/><path d="M10.7 6.9h8.6L15 14.1z" fill="#fff"/></svg><b>Visto</b></div>
   <h1>Sign in</h1>
   <p>to see your YouTube history</p>
   <label for="pw">Password</label>
