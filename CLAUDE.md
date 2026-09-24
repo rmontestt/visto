@@ -41,6 +41,16 @@ this file holds the rules and the traps.
   - The endpoint and token come from a connection code (`visto:` + base64url
     `{u, t}`), pasted in the popup and stored in `chrome.storage.local.settings`.
   - Host access to the dashboard is an optional permission, requested on connect.
+  - The popup switches (`chrome.storage.local.options`, defaults in
+    `P.DEFAULT_OPTIONS`) decide what is collected: `history` (plus live watch time),
+    `likes` (plus like clicks) and `favorites`.
+    - Both the hourly sync and the Full import follow them.
+    - The Full import runs the enabled phases in order: history → likes → favorites.
+    - Each phase ends with a `phaseDone` progress message, and `afterPhase` starts the
+      next one.
+    - A phase cut short stays `deep.phase`, and the next Full import resumes there.
+    - Favorites are found by name (`P.FAVORITES`) on /feed/playlists. The playlist URL
+      is kept in `status.favorites`.
 - `ingest/` (Python 3.10+; stdlib plus `tzdata` on Windows):
   - `visto_config.py` finds settings, the local DB, the TZ, the wrangler config and the
     Cloudflare account;
@@ -72,6 +82,11 @@ this file holds the rules and the traps.
   with `meta_source = 'gone'` so imports never bring them back.
 - Every panel follows the one global period (All time or a year) and the topic. Clicking
   what set a filter clears it. Lists page 5 at a time.
+- Panels appear only when their data exists (`showPanels`, from the summary's
+  `meta.n_likes / n_favorites / n_subs / has_timed / has_themes`).
+- Favorites may come from Takeout (dated) and the extension (undated, maybe another
+  language's name). Queries merge them per video (`fav` CTE in `saves`); never count
+  `saves` rows directly.
 
 ## Privacy (a product rule)
 

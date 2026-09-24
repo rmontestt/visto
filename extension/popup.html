@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <style>
-  :root { color-scheme:dark; --bg:#212121; --chip:#3f3f3f; --ink:#f1f1f1; --ink2:#aaa; --line:#3a3a3a; --field:#121212; }
-  @media (prefers-color-scheme: light) { :root { color-scheme:light; --bg:#fff; --chip:#f2f2f2; --ink:#0f0f0f; --ink2:#606060; --line:#e5e5e5; --field:#fff; } }
+  :root { color-scheme:dark; --bg:#212121; --chip:#3f3f3f; --ink:#f1f1f1; --ink2:#aaa; --line:#3a3a3a; --field:#121212; --red:#ff0033; --off:#717171; }
+  @media (prefers-color-scheme: light) { :root { color-scheme:light; --bg:#fff; --chip:#f2f2f2; --ink:#0f0f0f; --ink2:#606060; --line:#e5e5e5; --field:#fff; --off:#b0b0b0; } }
   body { margin:0; width:300px; padding:14px 16px 16px; background:var(--bg); color:var(--ink);
          font:13px/1.45 Roboto, Arial, system-ui, sans-serif; }
   .logo { display:flex; align-items:center; gap:5px; }
@@ -19,15 +19,30 @@
            border:0; background:var(--ink); color:var(--bg); }
   button.ghost { background:var(--chip); color:var(--ink); }
   button:disabled { opacity:.5; cursor:default; }
+  /* The dashboard is what the extension is for: its button leads, in YouTube red. */
+  .open { display:flex; align-items:center; justify-content:center; gap:8px; height:44px; border-radius:22px; margin:0 0 14px;
+          background:var(--red); color:#fff; font:500 15px Roboto, Arial, sans-serif; text-decoration:none; }
+  .open:hover { filter:brightness(1.08); }
+  .open svg { width:18px; height:18px; }
   a { color:var(--ink); }
-  .foot { margin-top:10px; font-size:12px; display:flex; justify-content:space-between; gap:8px; }
+  .foot { margin-top:10px; font-size:12px; display:flex; justify-content:flex-end; }
   .link { background:none; border:0; padding:0; width:auto; height:auto; margin:0; color:var(--ink2); text-decoration:underline; font:inherit; }
   #msg, .deep, .hint { font-size:12px; color:var(--ink2); margin-top:8px; }
   #msg:empty, .deep:empty { display:none; }
   textarea { width:100%; box-sizing:border-box; min-height:74px; resize:vertical; font:12px/1.4 ui-monospace, Consolas, monospace;
              background:var(--field); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px; word-break:break-all; }
-  label { display:block; font-size:12px; color:var(--ink2); margin:0 0 6px; }
+  label.field { display:block; font-size:12px; color:var(--ink2); margin:0 0 6px; }
   code { font-size:11px; }
+  /* what to collect: switches */
+  fieldset { border:0; margin:0 0 4px; padding:0; }
+  legend { font-size:12px; color:var(--ink2); padding:0; margin-bottom:4px; }
+  .switch { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; cursor:pointer; }
+  .switch small { display:block; color:var(--ink2); font-size:11px; }
+  .switch input { appearance:none; width:34px; height:20px; border-radius:10px; background:var(--off); position:relative; cursor:pointer; flex:none; margin:0; transition:background .15s; }
+  .switch input::after { content:""; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#fff; transition:left .15s; }
+  .switch input:checked { background:var(--red); }
+  .switch input:checked::after { left:17px; }
+  .switch input:focus-visible { outline:2px solid #3ea6ff; outline-offset:2px; }
 </style>
 </head>
 <body>
@@ -36,7 +51,7 @@
 
   <!-- Not connected yet: paste the code printed by `npm start` (local) or `npm run cloud` -->
   <section id="connect" hidden>
-    <label for="code">Connection code</label>
+    <label class="field" for="code">Connection code</label>
     <textarea id="code" placeholder="visto:…" spellcheck="false"></textarea>
     <p class="hint">Run <code>npm start</code> in the Visto folder (or <code>npm run cloud</code> for Cloudflare) and paste the code it prints.</p>
     <p class="err" id="connect-err" hidden></p>
@@ -45,21 +60,31 @@
   </section>
 
   <section id="main" hidden>
+    <a class="open" id="dash" href="#" target="_blank">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 20h16v1H3V4h1v16zm3-3h2v-6H7v6zm4 0h2V7h-2v10zm4 0h2v-3h-2v3z"/></svg>
+      Open dashboard
+    </a>
     <dl>
       <dt>Dashboard</dt><dd id="where">—</dd>
       <dt>Last sync</dt><dd id="last">—</dd>
-      <dt>History (last read)</dt><dd id="hist">—</dd>
-      <dt>Likes (last read)</dt><dd id="likes">—</dd>
+      <dt>Last read</dt><dd id="read">—</dd>
       <dt>Waiting to send</dt><dd id="queued">—</dd>
       <dt>Background reads</dt><dd id="bg">—</dd>
     </dl>
+    <fieldset>
+      <legend>What to collect (hourly sync and Full import)</legend>
+      <label class="switch"><span>Watch history<small>Every video you watch, and watch time in this browser</small></span><input type="checkbox" data-opt="history" checked></label>
+      <label class="switch"><span>Likes<small>Your liked videos</small></span><input type="checkbox" data-opt="likes" checked></label>
+      <label class="switch"><span>Favorites<small>Your playlist called Favorites</small></span><input type="checkbox" data-opt="favorites" checked></label>
+    </fieldset>
     <p class="err" id="err" hidden></p>
-    <button id="sync">Sync now</button>
-    <button id="deep" class="ghost">Full import (history and likes)</button>
+    <button id="sync" class="ghost">Sync now</button>
+    <button id="deep" class="ghost">Full import</button>
     <div id="msg"></div>
     <div id="deepmsg" class="deep"></div>
-    <div class="foot"><a id="dash" href="#" target="_blank">Open dashboard →</a><button class="link" id="reconnect">Change connection</button></div>
+    <div class="foot"><button class="link" id="reconnect">Change connection</button></div>
   </section>
+  <script src="parser.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

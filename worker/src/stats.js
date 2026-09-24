@@ -137,7 +137,14 @@ export async function summary(url, env) {
                          (SELECT MAX(day) FROM watches) AS last_day,
                          (SELECT MAX(at) FROM sync_log WHERE kind = 'ping') AS last_ping,
                          (SELECT MAX(at) FROM sync_log WHERE kind = 'history') AS last_history,
-                         (SELECT COUNT(*) FROM videos WHERE meta_checked_at IS NULL) AS pending_meta`),
+                         (SELECT COUNT(*) FROM videos WHERE meta_checked_at IS NULL) AS pending_meta,
+                         -- What was imported, so the dashboard only shows panels it can fill.
+                         (SELECT COUNT(*) FROM likes) AS n_likes,
+                         (SELECT COUNT(DISTINCT video_id) FROM saves WHERE lower(playlist_title) IN ${FAV}) AS n_favorites,
+                         (SELECT COUNT(*) FROM dislikes) AS n_dislikes,
+                         (SELECT COUNT(*) FROM channels WHERE subscribed = 1 OR subscribed_at IS NOT NULL) AS n_subs,
+                         EXISTS (SELECT 1 FROM watches WHERE ts IS NOT NULL) AS has_timed,
+                         EXISTS (SELECT 1 FROM videos WHERE theme IS NOT NULL) AS has_themes`),
       // Theme mix of the range, always unfiltered so it doubles as the filter menu.
       q(`WITH ${WD()}
          SELECT COALESCE(v.theme, 'pending') AS id, COUNT(*) AS n
@@ -199,7 +206,7 @@ export async function calendar(url, env) {
 
 // Per-video flags shown as icons on every list row. Only the Favorites playlist is
 // ever exposed (other playlists and comments stay private even on a public dashboard).
-const FAV = `('favorites', 'favoritos')`;
+const FAV = `('favorites', 'favourites', 'favoritos', 'favoris', 'preferiti', 'favoriten')`; // same names as FAVORITES in ingest.js
 const ROW = `
   wd.video_id, wd.day, wd.ts, wd.secs, wd.music,
   v.title, v.channel_title, v.channel_id, v.duration_s, v.is_short, v.theme,
@@ -353,21 +360,51 @@ export async function saves(url, env) {
   // sort = recent (date saved) | watched (days you watched it); dir = desc | asc
   const dir = url.searchParams.get('dir') === 'asc' ? 'ASC' : 'DESC';
   const order = url.searchParams.get('sort') === 'watched'
-    ? `days_watched ${dir}, s.ts DESC`
-    : `s.ts IS NULL, s.ts ${dir}, s.rowid ${dir}`;
+    ? `days_watched ${dir}, f.ts DESC`
+    : `f.ts IS NULL, f.ts ${dir}, f.r ${dir}`;
   const { from, to } = optionalRange(url);
   // Same theme whitelist as everywhere; here it applies to the saved video itself.
-  const tf = themeFilter(url).replace('AND video_id IN', 'AND s.video_id IN');
-  const where = `lower(s.playlist_title) IN ${FAV} AND COALESCE(s.day, '') BETWEEN ?1 AND ?2 ${tf}`;
+  const tf = themeFilter(url);
+  // One row per video: the list may come from both Takeout (dated) and the extension
+  // (undated), possibly under the playlist's name in different languages.
+  const fav = `fav AS (SELECT video_id, MIN(ts) AS ts, MIN(day) AS day, MIN(rowid) AS r FROM saves
+                       WHERE lower(playlist_title) IN ${FAV} ${tf} GROUP BY video_id)`;
+  const where = `COALESCE(f.day, '') BETWEEN ?1 AND ?2`;
   const [items, count] = await db.batch([
-    db.prepare(`
-      SELECT s.video_id, s.day, v.title, v.channel_title, v.duration_s,
-             (SELECT COUNT(DISTINCT day) FROM watches w WHERE w.video_id = s.video_id) AS days_watched,
+    db.prepare(`WITH ${fav}
+      SELECT f.video_id, f.day, v.title, v.channel_title, v.duration_s,
+             (SELECT COUNT(DISTINCT day) FROM watches w WHERE w.video_id = f.video_id) AS days_watched,
              (l.video_id IS NOT NULL) AS liked
-      FROM saves s LEFT JOIN videos v ON v.video_id = s.video_id LEFT JOIN likes l ON l.video_id = s.video_id
+      FROM fav f LEFT JOIN videos v ON v.video_id = f.video_id LEFT JOIN likes l ON l.video_id = f.video_id
       WHERE ${where}
       ORDER BY ${order} LIMIT ?3 OFFSET ?4`).bind(from, to, size, page * size),
-    db.prepare(`SELECT COUNT(*) AS n FROM saves s WHERE ${where}`).bind(from, to),
+    db.prepare(`WITH ${fav} SELECT COUNT(*) AS n FROM fav f WHERE ${where}`).bind(from, to),
+  ]);
+  const total = count.results[0].n;
+  return json({ items: items.results, total, page, pages: Math.ceil(total / size) });
+}
+
+/**
+ * GET /api/likes?page[&from&to][&theme] - liked videos, newest first, 5 per page.
+ * Likes read from the playlist before tracking started have no date: they come last,
+ * in the playlist's own order, and only under "All time".
+ */
+export async function likesList(url, env) {
+  const db = env.DB;
+  const page = Math.max(0, Number(url.searchParams.get('page')) || 0);
+  const size = 5;
+  const { from, to } = optionalRange(url);
+  const tf = themeFilter(url).replace('AND video_id IN', 'AND l.video_id IN');
+  const where = `COALESCE(l.day, '') BETWEEN ?1 AND ?2 ${tf}`;
+  const [items, count] = await db.batch([
+    db.prepare(`
+      SELECT l.video_id, l.day, v.title, v.channel_title, v.duration_s,
+             (SELECT COUNT(DISTINCT day) FROM watches w WHERE w.video_id = l.video_id) AS days_watched,
+             EXISTS (SELECT 1 FROM saves s WHERE s.video_id = l.video_id AND lower(s.playlist_title) IN ${FAV}) AS favorite
+      FROM likes l LEFT JOIN videos v ON v.video_id = l.video_id
+      WHERE ${where}
+      ORDER BY l.liked_at IS NULL, l.liked_at DESC, l.rowid ASC LIMIT ?3 OFFSET ?4`).bind(from, to, size, page * size),
+    db.prepare(`SELECT COUNT(*) AS n FROM likes l WHERE ${where}`).bind(from, to),
   ]);
   const total = count.results[0].n;
   return json({ items: items.results, total, page, pages: Math.ceil(total / size) });

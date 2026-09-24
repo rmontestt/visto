@@ -1,8 +1,8 @@
-// Runs on www.youtube.com. Three jobs:
-//  1. measure real playing time of the current video (live sessions),
-//  2. notice like / unlike clicks (comments are never captured: user's choice),
-//  3. scrape history + likes from page context when the service worker cannot
-//     (and run the deep backfill the service worker asks for).
+// Runs on www.youtube.com. Three jobs, each only if its switch is on in the popup:
+//  1. measure real playing time of the current video (live sessions; "Watch history"),
+//  2. notice like / unlike clicks ("Likes"; comments are never captured),
+//  3. scrape history, likes and Favorites from page context when the service worker
+//     cannot (and run the Full import phases the service worker asks for).
 (() => {
   'use strict';
   // The service worker may inject this file into a tab that already has it.
@@ -10,6 +10,13 @@
   self.__vistoContent = true;
   const P = self.VistoParser;
   const pad = n => String(n).padStart(2, '0');
+
+  // What the user lets Visto collect, kept in sync with the popup's switches.
+  let options = { ...P.DEFAULT_OPTIONS };
+  chrome.storage.local.get('options').then(r => { options = { ...P.DEFAULT_OPTIONS, ...(r.options || {}) }; }).catch(() => {});
+  chrome.storage.onChanged.addListener((ch, area) => {
+    if (area === 'local' && ch.options) options = { ...P.DEFAULT_OPTIONS, ...(ch.options.newValue || {}) };
+  });
 
   const send = msg => {
     try { return chrome.runtime.sendMessage(msg).catch(() => null); } catch { return Promise.resolve(null); } // extension reloaded
@@ -53,7 +60,7 @@
   let ticks = 0;
 
   function report(final) {
-    if (!cur || !cur.startedAt || cur.seconds < 5) return;
+    if (!options.history || !cur || !cur.startedAt || cur.seconds < 5) return;
     const v = playingVideo() || document.querySelector('video');
     const meta = pageMeta(cur.isShort);
     if (meta.title) cur.title = meta.title;
@@ -86,7 +93,7 @@
     if (!(t instanceof Element)) return;
 
     const likeHost = t.closest('like-button-view-model, #like-button, ytd-toggle-button-renderer#like-button');
-    if (likeHost && !t.closest('dislike-button-view-model, #dislike-button')) {
+    if (likeHost && options.likes && !t.closest('dislike-button-view-model, #dislike-button')) {
       const vid = currentVideoId();
       if (!vid) return;
       // Read the new state once YouTube has toggled it.
@@ -103,15 +110,24 @@
   }, true);
 
   // ---- 3. page-context scraping ---------------------------------------------------
+  // The first page of each list the user collects (the service worker does the same
+  // when its own requests carry the YouTube session).
   async function pageSync() {
-    const hist = await P.scrape(P.HISTORY_URL);
-    const history = P.historyItems(hist.items);
-    const likes = await P.scrape(P.LIKES_URL).catch(() => ({ items: [] }));
+    const { status } = await chrome.storage.local.get('status');
+    const none = { items: [] };
+    const hist = options.history ? await P.scrape(P.HISTORY_URL) : none;
+    const history = options.history ? P.historyItems(hist.items) : [];
+    const likes = options.likes ? await P.scrape(P.LIKES_URL).catch(() => none) : none;
+    const fav = status?.favorites?.url && options.favorites ? await P.scrape(status.favorites.url).catch(() => none) : none;
     const diag = hist.diag || likes.diag ? { history: hist.diag, likes: likes.diag } : undefined;
+    const payload = { diag };
+    if (options.history) payload.history = history;
+    if (options.likes) payload.likes = { mode: 'recent', items: likes.items };
+    if (fav.items.length) payload.saves = { playlist: status.favorites.name, items: fav.items };
     await send({
       kind: 'scraped',
-      payload: { history, likes: { mode: 'recent', items: likes.items }, diag },
-      status: { lastSync: { at: Date.now(), via: 'tab', history: history.length, likes: likes.items.length }, lastError: null },
+      payload,
+      status: { lastSync: { at: Date.now(), via: 'tab', history: history.length, likes: likes.items.length, favorites: fav.items.length }, lastError: null },
     });
   }
 
@@ -257,7 +273,7 @@
       apiHistoryRunning = false;
     }
     if (stop?.reason === 'no-continuation') {
-      await progress({ phase: 'likes', apiResume: null, history: h, oldest, step: 'history complete; opening your liked videos' });
+      await progress({ phaseDone: 'history', apiResume: null, history: h, oldest, step: 'history complete' });
       return;
     }
     // Paging broke (error, empty page...): scroll the page from the oldest day reached.
@@ -289,7 +305,7 @@
         },
       });
       await send({ kind: 'scraped', payload: { diag: { deep: true, historyDom: { items: r.count, rounds: r.rounds, oldest } } } });
-      await progress({ phase: 'likes', history: r.count, oldest, step: 'opening your liked videos' });
+      await progress({ phaseDone: 'history', history: r.count, oldest, step: 'history complete' });
     } catch (e) {
       await progress({ running: false, error: e.message, step: 'reading the history failed' });
     } finally {
@@ -315,10 +331,16 @@
   const STALL_MS = 90_000;
   const LOADING = 'ytd-continuation-item-renderer, yt-continuation-item-view-model, tp-yt-paper-spinner[active]';
 
+  const LISTS = {
+    likes: { label: 'liked videos', payload: items => ({ likes: { mode: 'baseline', items } }) },
+    favorites: { label: 'Favorites', payload: (items, name) => ({ saves: { playlist: name, items } }) },
+  };
+
   let domRunning = false;
-  async function domLikes() {
+  async function domPlaylist({ what, name }) {
     if (domRunning) return;
     domRunning = true;
+    const list = LISTS[what];
     const sent = new Set();
     const progress = patch => send({ kind: 'deepProgress', patch });
     let total = null, rounds = 0, finished = false;
@@ -331,12 +353,12 @@
         if (fresh.length) {
           fresh.forEach(it => sent.add(it.videoId));
           for (let i = 0; i < fresh.length; i += 200) {
-            await send({ kind: 'scraped', payload: { likes: { mode: 'baseline', items: fresh.slice(i, i + 200) } } });
+            await send({ kind: 'scraped', payload: list.payload(fresh.slice(i, i + 200), name) });
           }
           lastNew = Date.now();
           nudges = 0;
         }
-        await progress({ likes: sent.size, likesTotal: total, step: `reading liked videos: ${sent.size}${total ? ` of ${total}` : ''}` });
+        await progress({ [what]: sent.size, [`${what}Total`]: total, step: `reading ${list.label}: ${sent.size}${total ? ` of ${total}` : ''}` });
         if (total && sent.size >= total) { finished = true; break; }
         if (document.hidden) {
           // Browsers pause hidden tabs: waiting there is not YouTube being stuck.
@@ -357,24 +379,40 @@
         window.scrollTo(0, document.documentElement.scrollHeight);
         await sleep(fresh.length ? 1100 : 1800);
       }
-      await send({ kind: 'scraped', payload: { diag: { deep: true, likesDom: { items: sent.size, total, rounds, finished } } } });
+      await send({ kind: 'scraped', payload: { diag: { deep: true, [`${what}Dom`]: { items: sent.size, total, rounds, finished } } } });
       if (finished) {
-        await progress({ running: false, done: true, likes: sent.size, step: `finished: ${sent.size}${total ? ` of ${total}` : ''} likes` });
+        await progress({ phaseDone: what, [what]: sent.size, step: `${list.label}: ${sent.size}${total ? ` of ${total}` : ''}` });
       } else {
-        await progress({ running: false, error: 'YouTube stopped loading more liked videos',
-          likes: sent.size, step: `stopped at ${sent.size}${total ? ` of ${total}` : ''} likes; click Full import to resume them` });
+        await progress({ running: false, error: `YouTube stopped loading more ${list.label}`,
+          [what]: sent.size, step: `stopped at ${sent.size}${total ? ` of ${total}` : ''} ${list.label}; click Full import to resume them` });
       }
     } catch (e) {
-      await progress({ running: false, error: e.message, likes: sent.size, step: `reading liked videos failed after ${sent.size}` });
+      await progress({ running: false, error: e.message, [what]: sent.size, step: `reading ${list.label} failed after ${sent.size}` });
     } finally {
       domRunning = false;
     }
   }
 
+  // On youtube.com/feed/playlists: the user's Favorites playlist, found by its name.
+  async function findFavorites() {
+    await sleep(2000);
+    for (let i = 0; i < 10; i++) {
+      for (const a of document.querySelectorAll('a[href*="list="]')) {
+        const list = /[?&]list=([\w-]+)/.exec(a.getAttribute('href') || '')?.[1];
+        const label = (a.textContent || a.getAttribute('title') || '').trim();
+        if (list && P.FAVORITES.test(label)) return { url: `https://www.youtube.com/playlist?list=${list}`, name: label };
+      }
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await sleep(1000);
+    }
+    return null;
+  }
+
   chrome.runtime.onMessage.addListener((msg, _s, reply) => {
     if (msg.kind === 'ping') { reply({ ok: true, url: location.href }); return; }
     if (msg.kind === 'deepHistory') { deepHistory(msg); reply({ started: true }); return; }
-    if (msg.kind === 'domLikes') { domLikes(); reply({ started: true }); return; }
+    if (msg.kind === 'domPlaylist') { domPlaylist(msg); reply({ started: true }); return; }
+    if (msg.kind === 'findFavorites') { findFavorites().then(reply, () => reply(null)); return true; }
   });
 
   // Only the top frame, and only once per page load.

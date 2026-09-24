@@ -1,6 +1,6 @@
 import { json, hmacHex, safeEqual } from './util.js';
 import { handleIngest } from './ingest.js';
-import { summary, calendar, day, search, videos, rewatched, saves, themesByYear, subs, channels } from './stats.js';
+import { summary, calendar, day, search, videos, rewatched, saves, themesByYear, subs, channels, likesList } from './stats.js';
 import { enrich } from './enrich.js';
 
 const COOKIE = 'visto_session';
@@ -64,7 +64,7 @@ async function route(request, env) {
       const handler = {
         '/api/summary': summary, '/api/calendar': calendar, '/api/day': day, '/api/search': search,
         '/api/videos': videos, '/api/rewatched': rewatched, '/api/saves': saves, '/api/themes': themesByYear, '/api/subs': subs,
-        '/api/channels': channels,
+        '/api/channels': channels, '/api/likes': likesList,
       }[pathname];
       if (!handler) return json({ error: 'not found' }, 404);
       // An "all time" summary reads ~1M D1 rows and the daily read quota is shared with

@@ -1,5 +1,8 @@
 const $ = id => document.getElementById(id);
 const msg = t => { $('msg').textContent = t; };
+const P = self.VistoParser;
+const LABEL = { history: 'history videos', likes: 'likes', favorites: 'favorites' };
+let currentOpts = { ...P.DEFAULT_OPTIONS };
 
 function ago(ms) {
   if (!ms) return '—';
@@ -63,6 +66,32 @@ $('save').onclick = async () => {
 $('cancel').onclick = () => { $('connect').hidden = true; $('main').hidden = false; };
 $('reconnect').onclick = () => showConnect(true);
 
+// ---------- what to collect -------------------------------------------------------
+// Stored as chrome.storage.local.options; content.js and the service worker follow it.
+// Turning a kind off stops collecting it; what was already imported stays.
+
+async function loadOptions() {
+  const { options } = await chrome.storage.local.get('options');
+  const opts = currentOpts = { ...P.DEFAULT_OPTIONS, ...(options || {}) };
+  document.querySelectorAll('[data-opt]').forEach(x => { x.checked = !!opts[x.dataset.opt]; });
+  paintButtons(opts);
+}
+
+function paintButtons(opts) {
+  const any = Object.values(opts).some(Boolean);
+  $('deep').disabled = $('deep').dataset.running === '1' || !any;
+  $('sync').disabled = !any;
+  const on = ['history', 'likes', 'favorites'].filter(k => opts[k]).map(k => ({ history: 'history', likes: 'likes', favorites: 'Favorites' })[k]);
+  $('deep').textContent = any ? `Full import (${on.join(', ')})` : 'Full import (nothing selected)';
+}
+
+document.querySelectorAll('[data-opt]').forEach(x => x.addEventListener('change', async () => {
+  const opts = Object.fromEntries([...document.querySelectorAll('[data-opt]')].map(i => [i.dataset.opt, i.checked]));
+  await chrome.storage.local.set({ options: opts });
+  currentOpts = opts;
+  paintButtons(opts);
+}));
+
 // ---------- status ---------------------------------------------------------------
 
 async function refresh() {
@@ -72,8 +101,8 @@ async function refresh() {
   const s = r.status || {};
   $('where').textContent = new URL(r.endpoint).host;
   $('last').textContent = s.lastSync ? `${ago(s.lastSync.at)} · ${s.lastSync.via}` : 'never';
-  $('hist').textContent = s.lastSync?.history ?? '—';
-  $('likes').textContent = s.lastSync?.likes ?? '—';
+  const ls = s.lastSync || {};
+  $('read').textContent = s.lastSync ? `${ls.history ?? 0} history · ${ls.likes ?? 0} likes · ${ls.favorites ?? 0} fav.` : '—';
   $('queued').textContent = r.queued;
   $('bg').textContent = s.bgWorks === undefined ? '—' : s.bgWorks ? 'working' : 'no (uses YouTube tabs)';
   $('err').hidden = !s.lastError;
@@ -84,9 +113,9 @@ async function refresh() {
 
 $('sync').onclick = async () => {
   $('sync').disabled = true;
-  msg('Reading history and likes…');
+  msg('Reading the latest videos…');
   const r = await chrome.runtime.sendMessage({ kind: 'syncNow' });
-  msg(r.error ? `Error: ${r.error}` : `Done: ${r.history} videos, ${r.likes} likes.`);
+  msg(r.error ? `Error: ${r.error}` : `Done: ${r.history} videos, ${r.likes} likes, ${r.favorites} favorites.`);
   $('sync').disabled = false;
   refresh();
 };
@@ -94,26 +123,27 @@ $('sync').onclick = async () => {
 function showDeep(d) {
   if (!d) return;
   const msg = t => { $('deepmsg').textContent = t; };
-  const counts = `${d.history ?? 0} history videos · ${d.likes ?? 0} likes`;
+  const counts = (d.phases || ['history', 'likes']).map(p => `${d[p] ?? 0} ${LABEL[p]}`).join(' · ');
   const oldest = d.oldest ? ` · back to ${d.oldest}` : '';
-  if (d.running && Date.now() - (d.updatedAt || 0) > 120_000) {
-    $('deep').disabled = false;
+  const running = d.running && Date.now() - (d.updatedAt || 0) <= 120_000;
+  $('deep').dataset.running = running ? '1' : '';
+  if (d.running && !running) {
     msg(`The import stopped (no progress since ${ago(d.updatedAt)}, ${counts}${oldest}). Click “Full import” to carry on from there.`);
-  } else if (d.running) {
-    $('deep').disabled = true;
+  } else if (running) {
     msg(`Importing… ${d.step || ''}. ${counts}${oldest}. You can close this popup; keep the YouTube tab it opened.`);
   } else {
-    $('deep').disabled = false;
-    msg(d.error ? `Import: ${d.step}. Error: ${d.error}` : `Full import ${ago(d.updatedAt)}: ${counts}${oldest}. ${d.step || ''}`);
+    msg(d.error ? `Import: ${d.step}. Error: ${d.error}` : `Full import ${ago(d.updatedAt)}: ${d.step || counts}.`);
   }
+  paintButtons(currentOpts);
 }
 
 $('deep').onclick = async () => {
   $('deep').disabled = true;
-  msg('A YouTube tab will open and scroll through your history and your liked videos by itself. Keep it visible until it finishes; it closes on its own.');
+  msg('A YouTube tab will open and scroll through what you chose by itself. Keep it visible until it finishes; it closes on its own.');
   const r = await chrome.runtime.sendMessage({ kind: 'deepBackfill' });
   if (r?.error) { msg(`Could not start: ${r.error}`); $('deep').disabled = false; }
 };
 
+loadOptions();
 refresh();
 setInterval(refresh, 1500);

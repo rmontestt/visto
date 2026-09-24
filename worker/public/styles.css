@@ -402,3 +402,6 @@ details.fold[open] > summary { margin-bottom: 12px; }
 
 /* paged lists keep their frame while the next page loads */
 .sel-body.loading { opacity: .5; transition: opacity .15s; }
+
+/* sections the imported data cannot fill are hidden (showPanels); keep that over any display rule */
+[hidden] { display: none !important; }

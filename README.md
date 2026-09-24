@@ -34,15 +34,25 @@ You need [Node.js](https://nodejs.org) 20+ and a Chromium browser (Chrome, Brave
    on **Developer mode**, click **Load unpacked** and pick the `extension/` folder.
 3. **Connect it**: click the Visto icon, paste the connection code, click **Connect** and
    allow access to `localhost`.
-4. **Import your history**: open youtube.com signed in to your account, then click **Full
-   import** in the popup. A YouTube tab opens and scrolls through your whole history and
-   your liked videos by itself. Keep it visible; it closes when it's done. A large history
-   (tens of thousands of videos) takes a few hours. If it stops, click the button again and
-   it resumes where it left off.
-5. **Open the dashboard**: **Open dashboard →** in the popup, or http://localhost:8787.
+4. **Choose what to collect**: the popup's switches are **Watch history** (every video you
+   watch, plus watch time in that browser), **Likes** and **Favorites** (your playlist
+   called Favorites). All are on by default.
+5. **Import**: open youtube.com signed in to your account, then click **Full import** in the
+   popup. A YouTube tab opens and goes through what you chose, in order: your whole
+   history, then your liked videos, then your Favorites. Keep it visible; it closes when
+   it's done.
+   - The history takes a few minutes, even for tens of thousands of videos.
+   - If a step stops, click the button again: it resumes at that step.
+6. **Open the dashboard**: the red **Open dashboard** button at the top of the popup, or
+   http://localhost:8787.
 
-From then on the extension syncs every hour while your browser is open. If the local
-dashboard isn't running, it keeps everything queued and sends it later.
+From then on the extension syncs the first page of each list you chose every hour, while
+your browser is open. If the local dashboard isn't running, it keeps everything queued and
+sends it later. Turning a switch off stops collecting that kind of data; what was already
+imported stays.
+
+The dashboard shows only what you collect. Someone who imports only likes, or history and
+Favorites, sees a dashboard made of exactly that.
 
 ### Optional: durations, topics and channel avatars
 
@@ -128,7 +138,8 @@ Once the dashboard is public, its API answers are cached for 10 minutes to save 
 | **Extension · Full import** | Your whole youtube.com/feed/history, from all your devices: one row per (video, day) | Day only, no time. The history page dates views in UTC and ends where YouTube stops keeping it (for long-time users, around late 2016) |
 | **Extension · hourly sync** | The first page of your history and of your liked videos | If the browser stays closed for many days, a gap can appear; a new full import fills it |
 | **Extension · live** | Seconds you actually played, and like/unlike clicks, with exact times | Only what you watch in that browser |
-| **Extension · liked videos** | Every like, read by scrolling the real "Liked videos" page | Unavailable videos are hidden by YouTube |
+| **Extension · liked videos** | Every like, read by scrolling the real "Liked videos" page | Unavailable videos are hidden by YouTube. The page doesn't say when you liked each one, so likes from the first import have no date |
+| **Extension · Favorites** | Your playlist called Favorites (or Favoritos, Favoris…), found on your playlists page and scrolled the same way | No date added (Takeout has it) |
 | **Takeout · My Activity (JSON)** | The complete, timed source: every view with its time, dated likes, dislikes, subscriptions | You request it by hand (or every 2 months) |
 | **Takeout · YouTube and YouTube Music** | Favorites playlist, current subscriptions | Its own watch history is capped at ~2 years: use My Activity for that |
 | **YouTube Data API** | Duration, category, publish date, topics → theme; channel avatars and handles | Optional free key |
@@ -186,8 +197,13 @@ Sections:
     day;
   - clicking a day shows the whole day, with arrows to the previous and next day;
   - search (`/`) finds anything in your history.
-- **Side panels**: top channels, Favorites and Subscriptions (5 per page, sortable), "When
-  you watch" (weekday × hour) and format split.
+- **Side panels**:
+  - top channels, Favorites, Liked videos and Subscriptions, 5 per page (Favorites and
+    Subscriptions are sortable);
+  - "When you watch" (weekday × hour) and the format split.
+- **Only what you collect**: each panel appears only if its data exists. For example,
+  "When you watch" needs timed views, from Takeout or the browser, and Topics needs a
+  YouTube API key.
 
 ## How it works
 
@@ -281,7 +297,6 @@ Local files, all git-ignored:
 
 - An incremental hourly sync that walks back to the last synced day, so long browser
   breaks leave no gaps.
-- Reading the Favorites playlist from the extension (today it comes from Takeout).
 - Importing Takeout from the dashboard itself, with no Python.
 
 ## License

@@ -1,4 +1,5 @@
-// Service worker: periodic scrape of history + liked videos, and a persistent outbox
+// Service worker: periodic scrape of history, likes and Favorites (whatever the popup's
+// switches allow), the Full import's phases, and a persistent outbox
 // that ships everything (including live sessions/events from content.js) to your Visto
 // dashboard. Where that dashboard lives (local `npm start` or your Cloudflare Worker)
 // and its ingest token come from the connection code pasted in the popup.
@@ -26,6 +27,7 @@ chrome.alarms.onAlarm.addListener(a => {
 
 const get = async (k, d) => (await chrome.storage.local.get(k))[k] ?? d;
 const set = obj => chrome.storage.local.set(obj);
+const getOptions = async () => ({ ...P.DEFAULT_OPTIONS, ...(await get('options', {})) });
 
 async function patchStatus(p) {
   const s = await get('status', {});
@@ -104,16 +106,25 @@ async function flush() {
 // ---------- scraping --------------------------------------------------------------
 
 async function scrapeAll(via) {
-  const hist = await P.scrape(P.HISTORY_URL);
-  const history = P.historyItems(hist.items);
-  const likes = await P.scrape(P.LIKES_URL).catch(e => ({ items: [], error: e }));
+  const opts = await getOptions();
+  const { favorites } = await get('status', {});
+  const none = { items: [] };
+  const hist = opts.history ? await P.scrape(P.HISTORY_URL) : none;
+  const history = opts.history ? P.historyItems(hist.items) : [];
+  const likes = opts.likes ? await P.scrape(P.LIKES_URL).catch(e => ({ items: [], error: e })) : none;
+  // Favorites: only once a Full import has found the playlist (its id is kept in status).
+  const fav = opts.favorites && favorites?.url ? await P.scrape(favorites.url).catch(() => none) : none;
   const diag = hist.diag || likes.diag ? { history: hist.diag, likes: likes.diag } : undefined;
-  await enqueue({ history, likes: { mode: 'recent', items: likes.items }, diag });
+  const payload = { diag };
+  if (opts.history) payload.history = history;
+  if (opts.likes) payload.likes = { mode: 'recent', items: likes.items };
+  if (fav.items.length) payload.saves = { playlist: favorites.name, items: fav.items };
+  await enqueue(payload);
   await patchStatus({
-    lastSync: { at: Date.now(), via, history: history.length, likes: likes.items.length },
+    lastSync: { at: Date.now(), via, history: history.length, likes: likes.items.length, favorites: fav.items.length },
     lastError: likes.error ? `likes: ${likes.error.message}` : null,
   });
-  return { history: history.length, likes: likes.items.length };
+  return { history: history.length, likes: likes.items.length, favorites: fav.items.length };
 }
 
 async function syncFromBackground() {
@@ -129,11 +140,16 @@ async function syncFromBackground() {
   }
 }
 
-// ---------- deep backfill (full history + all likes) -----------------------------
+// ---------- Full import: history, then likes, then Favorites --------------------
 // YouTube's pages only load older rows while you scroll them, and pause that in hidden
-// tabs. So the worker opens ONE foreground tab, points it at the history page and then
-// at the liked list, and content.js scrolls each one. Progress comes back as
-// 'deepProgress' messages and lives in status.deep; the tab is closed at the end.
+// tabs. So the worker opens ONE foreground tab and walks it through the phases the
+// popup's switches allow; content.js reads each page and reports progress as
+// 'deepProgress' messages (kept in status.deep). A phase that ends well reports
+// `phaseDone`; the tab is closed once the last one is done. A phase cut short leaves the
+// tab open, and the next Full import resumes at that phase.
+
+const ORDER = ['history', 'likes', 'favorites'];
+const LABEL = { history: 'history', likes: 'liked videos', favorites: 'Favorites' };
 
 function waitForLoad(tabId) {
   return new Promise(resolve => {
@@ -147,48 +163,83 @@ function waitForLoad(tabId) {
 async function startDeep() {
   const s = await get('status', {});
   if (s.deep?.running && Date.now() - (s.deep.updatedAt || 0) < 120_000) return { already: true };
-  // History complete but the liked list was cut short: go straight back to the likes.
-  if (s.deep && !s.deep.done && s.deep.phase === 'likes') {
-    await patchDeep({ running: true, error: null, step: 'resuming your liked videos' });
-    runDomPhase('likes');
+  const opts = await getOptions();
+  const phases = ORDER.filter(p => opts[p]);
+  if (!phases.length) return { error: 'turn on at least one kind of data to import' };
+  const d = s.deep;
+  // A list phase that was cut short: go straight back to it.
+  if (d && !d.done && d.phase && d.phase !== 'history' && phases.includes(d.phase)) {
+    await patchDeep({ running: true, error: null, phases, step: `resuming your ${LABEL[d.phase]}` });
+    runDomPhase(d.phase);
     return { started: true };
   }
   // A run that died mid-history (tab crash, browser closed) resumes from its oldest day.
-  const unfinished = s.deep && !s.deep.done && !s.deep.phase;
-  const resumeFrom = unfinished ? (s.deep.resumeFrom && s.deep.oldest ? [s.deep.resumeFrom, s.deep.oldest].sort()[0] : s.deep.oldest) : null;
-  const apiResume = unfinished ? s.deep.apiResume || null : null;
-  await patchStatus({ deep: { running: true, startedAt: Date.now(), updatedAt: Date.now(), history: 0, likes: 0, oldest: null, resumeFrom, apiResume, step: apiResume ? 'resuming your history where it stopped' : 'opening your history' } });
-  runDomPhase('history'); // not awaited: pages take a while to load
+  const unfinished = d && !d.done && (!d.phase || d.phase === 'history') && phases[0] === 'history';
+  const resumeFrom = unfinished ? (d.resumeFrom && d.oldest ? [d.resumeFrom, d.oldest].sort()[0] : d.oldest) : null;
+  const apiResume = unfinished ? d.apiResume || null : null;
+  await patchStatus({ deep: {
+    running: true, startedAt: Date.now(), updatedAt: Date.now(), phases, phase: phases[0],
+    history: 0, likes: 0, favorites: 0, oldest: null, resumeFrom, apiResume,
+    step: apiResume ? 'resuming your history where it stopped' : `opening your ${LABEL[phases[0]]}`,
+  } });
+  runDomPhase(phases[0]); // not awaited: pages take a while to load
   return { started: true };
 }
 
-const PHASES = {
-  history: { url: P.HISTORY_URL, message: 'deepHistory', step: 'loading your history' },
-  likes: { url: P.LIKES_URL, message: 'domLikes', step: 'loading your liked videos' },
-};
+// Point our tab at `url` (opening it if needed) and make sure content.js is there.
+async function openInTab(url) {
+  const { deep } = await get('status', {});
+  let tab = deep?.tabId ? await chrome.tabs.get(deep.tabId).catch(() => null) : null;
+  tab = tab
+    ? await chrome.tabs.update(tab.id, { url, active: true })
+    : await chrome.tabs.create({ url, active: true });
+  await patchDeep({ tabId: tab.id });
+  await waitForLoad(tab.id);
+  try {
+    await chrome.tabs.sendMessage(tab.id, { kind: 'ping' });
+  } catch {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['parser.js', 'content.js'] });
+  }
+  return tab;
+}
 
 async function runDomPhase(name) {
-  const phase = PHASES[name];
   try {
-    const { deep } = await get('status', {});
-    let tab = deep?.tabId ? await chrome.tabs.get(deep.tabId).catch(() => null) : null;
-    tab = tab
-      ? await chrome.tabs.update(tab.id, { url: phase.url, active: true })
-      : await chrome.tabs.create({ url: phase.url, active: true });
-    await patchDeep({ tabId: tab.id, step: phase.step });
-    await waitForLoad(tab.id);
-    try {
-      await chrome.tabs.sendMessage(tab.id, { kind: 'ping' });
-    } catch {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['parser.js', 'content.js'] });
+    await patchDeep({ phase: name, step: `loading your ${LABEL[name]}` });
+    if (name === 'history') {
+      const tab = await openInTab(P.HISTORY_URL);
+      const fresh = (await get('status', {})).deep || {};
+      await chrome.tabs.sendMessage(tab.id, { kind: 'deepHistory', resume: fresh.apiResume, resumeFrom: fresh.resumeFrom });
+    } else if (name === 'likes') {
+      const tab = await openInTab(P.LIKES_URL);
+      await chrome.tabs.sendMessage(tab.id, { kind: 'domPlaylist', what: 'likes' });
+    } else if (name === 'favorites') {
+      await patchDeep({ step: 'looking for your Favorites playlist' });
+      let tab = await openInTab(P.PLAYLISTS_URL);
+      const fav = await chrome.tabs.sendMessage(tab.id, { kind: 'findFavorites' });
+      if (!fav?.url) {
+        await patchDeep({ favoritesMissing: true, step: 'no playlist called Favorites found; skipped' });
+        return afterPhase('favorites');
+      }
+      await patchStatus({ favorites: fav }); // the hourly sync reads its first page too
+      tab = await openInTab(fav.url);
+      await chrome.tabs.sendMessage(tab.id, { kind: 'domPlaylist', what: 'favorites', name: fav.name });
     }
-    const fresh = (await get('status', {})).deep || {};
-    await chrome.tabs.sendMessage(tab.id, name === 'history'
-      ? { kind: phase.message, resume: fresh.apiResume, resumeFrom: fresh.resumeFrom }
-      : { kind: phase.message });
   } catch (e) {
-    await patchDeep({ running: false, error: e.message, step: `could not open the page (${name})` });
+    await patchDeep({ running: false, error: e.message, step: `could not open the page (${LABEL[name]})` });
   }
+}
+
+// A phase finished well: ship what it read, then run the next one or wrap up.
+async function afterPhase(done) {
+  await flush();
+  const { deep } = await get('status', {});
+  const phases = deep?.phases || ORDER;
+  const next = phases[phases.indexOf(done) + 1];
+  if (next) return runDomPhase(next);
+  const parts = phases.map(p => `${deep?.[p] ?? 0} ${LABEL[p]}`).join(' · ');
+  await patchDeep({ running: false, done: true, step: `finished: ${parts}` });
+  if (deep?.tabId) chrome.tabs.remove(deep.tabId).catch(() => {});
 }
 
 async function patchDeep(p) {
@@ -201,8 +252,9 @@ async function patchDeep(p) {
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   (async () => {
     switch (msg.kind) {
-      case 'session': await upsertSession({ ...msg.session, updatedAt: Date.now() }); return { ok: true };
-      case 'event': await enqueue({ events: [msg.event] }); return { ok: true };
+      // Live data follows the switches too: watch time goes with "Watch history".
+      case 'session': if ((await getOptions()).history) await upsertSession({ ...msg.session, updatedAt: Date.now() }); return { ok: true };
+      case 'event': if ((await getOptions()).likes) await enqueue({ events: [msg.event] }); return { ok: true };
       case 'scraped': {
         await enqueue(msg.payload);
         if (msg.status) await patchStatus(msg.status);
@@ -214,17 +266,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       }
       case 'deepBackfill': return startDeep();
       case 'deepProgress': {
-        await patchDeep(msg.patch);
-        if (msg.patch.phase === 'likes') {
-          await flush(); // ship the history before the tab navigates away
-          runDomPhase('likes');
-        }
-        if (msg.patch.running === false) {
-          await flush();
-          // Close our tab only on success; after an error leave it open to look at.
-          const s = await get('status', {});
-          if (msg.patch.done && s.deep?.tabId) chrome.tabs.remove(s.deep.tabId).catch(() => {});
-        }
+        const { phaseDone, ...patch } = msg.patch;
+        await patchDeep(patch);
+        if (phaseDone) afterPhase(phaseDone); // not awaited: the next page takes a while
+        // Cut short: keep what was read, leave the tab open to look at.
+        else if (patch.running === false) await flush();
         return { ok: true };
       }
       case 'syncNow': {

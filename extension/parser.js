@@ -325,5 +325,10 @@
     scrape, historyItems, localDay,
     HISTORY_URL: 'https://www.youtube.com/feed/history',
     LIKES_URL: 'https://www.youtube.com/playlist?list=LL',
+    PLAYLISTS_URL: 'https://www.youtube.com/feed/playlists',
+    // What the user lets Visto collect (popup switches); every kind is on by default.
+    DEFAULT_OPTIONS: { history: true, likes: true, favorites: true },
+    // Names YouTube gives the Favorites playlist (same list as the Worker's FAVORITES).
+    FAVORITES: /^(favorites|favourites|favoritos|favoris|preferiti|favoriten)$/i,
   };
 })(typeof self !== 'undefined' ? self : globalThis);

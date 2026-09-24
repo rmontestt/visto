@@ -1,6 +1,8 @@
 import { json, localParts, isDay, isVideoId, clampStr } from './util.js';
 
 const MAX_ITEMS = 5000;
+// Names YouTube gives the Favorites playlist in the languages Visto reads.
+export const FAVORITES = /^(favorites|favourites|favoritos|favoris|preferiti|favoriten)$/i;
 const CHUNK = 200; // statements per D1 batch
 
 /**
@@ -8,6 +10,7 @@ const CHUNK = 200; // statements per D1 batch
  * {
  *   history:  [{videoId, day, title, channel, channelId, durationS, isShort}],
  *   likes:    {mode: 'recent'|'baseline', items: [{videoId, title, channel, channelId, durationS}]},
+ *   saves:    {playlist: 'Favorites', items: [{videoId, title, channel, channelId, durationS}]},
  *   sessions: [{videoId, startedAt, seconds, day, hour, dow, title, channel, durationS, isShort}],
  *   events:   [{type: 'like'|'unlike', videoId, ts, day}],   // comments are ignored by design
  *   diag:     {...}   // parser shape report when a scrape came back empty
@@ -89,6 +92,19 @@ export async function handleIngest(request, env) {
     }
   }
   counts.likes = likeItems.length;
+
+  // --- Favorites playlist scrape (the only playlist Visto ever stores) ---------------
+  // The page does not say when a video was added, so ts/day stay NULL; a Takeout import
+  // of the same list fills the date in its own row (the dashboard merges both by video).
+  const favTitle = typeof body.saves?.playlist === 'string' && FAVORITES.test(body.saves.playlist.trim())
+    ? body.saves.playlist.trim().slice(0, 100) : null;
+  const saveItems = favTitle ? arr(body.saves.items).filter(it => isVideoId(it.videoId)) : [];
+  const saveStmt = env.DB.prepare(`INSERT OR IGNORE INTO saves (playlist_title, video_id) VALUES (?1, ?2)`);
+  for (const it of saveItems) {
+    upsertVideo(it);
+    stmts.push(saveStmt.bind(favTitle, it.videoId));
+  }
+  counts.saves = saveItems.length;
 
   // --- live events: like / unlike clicks in Brave (comment events are dropped) -------------------------
   const events = arr(body.events).filter(e => isVideoId(e.videoId) && Number.isFinite(e.ts));

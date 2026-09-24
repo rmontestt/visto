@@ -130,6 +130,24 @@ function topThemeFig(s) {
            s: `${pct.format(dist[0].n / total)} of what you watched${dist[1] ? ` · then ${esc(themeLabel(dist[1].id))}` : ''}` };
 }
 
+// Only the panels the imported data can fill: someone who collects just their
+// likes, or just history and Favorites, sees a dashboard made of exactly that.
+function showPanels(s) {
+  const m = s.meta, watched = !!m.first_day;
+  const show = (sel, on) => { const el = document.querySelector(sel); if (el) el.hidden = !on; };
+  const section = id => `section[aria-labelledby="${id}"]`;
+  show('#figures', watched || m.n_likes);
+  show(section('h-act'), watched);
+  show(section('h-themes'), watched && m.has_themes);
+  show(section('h-rep'), watched);
+  show(section('h-ch'), watched);
+  show(section('h-saves'), m.n_favorites);
+  show(section('h-likes'), m.n_likes);
+  show(section('h-subs'), m.n_subs);
+  show(section('h-hours'), watched && m.has_timed);
+  show(section('h-fmt'), watched);
+}
+
 function renderFigures(s) {
   const k = s.kpi;
   const perDay = k.active_days ? k.views / k.active_days : 0;
@@ -155,8 +173,8 @@ function renderFigures(s) {
         ? `${hours(s.time.measured_s)} measured in the browser, the rest from the gaps between videos`
         : `from the gap between one video and the next${s.time.untimed_n ? ` (${nf.format(s.time.untimed_n)} without a time: their length)` : ''}` },
     { k: 'Channels', icon: 'channel', v: compact(k.channels), s: `${plural(k.uniq, 'different video')}` },
-    { k: 'Likes', icon: 'like', v: compact(s.likes.in_range), s: `${nf.format(s.likes.watched_liked)} of the videos you watched have your like` },
-    topThemeFig(s),
+    s.meta.n_likes ? { k: 'Likes', icon: 'like', v: compact(s.likes.in_range), s: `${nf.format(s.likes.watched_liked)} of the videos you watched have your like` } : null,
+    s.meta.has_themes ? topThemeFig(s) : null,
     // A past year has no running streak: show its best one instead.
     s.range.to < s.range.today
       ? { k: 'Best streak', icon: 'history', v: plural(s.streak.longest, 'day'),
@@ -164,7 +182,9 @@ function renderFigures(s) {
       : { k: 'Streak', icon: 'history', v: plural(s.streak.current, 'day'),
           s: `record${state.range === 'all' ? '' : ` in ${esc(state.range)}`}: ${s.streak.longest} · ${nf1.format(perDay)} videos per active day` },
   ];
-  $('#figures').innerHTML = figs.map(f => `
+  // Without watch history only the likes figure has something to say.
+  const shown = figs.filter(Boolean).filter(f => s.meta.first_day || f.icon === 'like');
+  $('#figures').innerHTML = shown.map(f => `
     <div class="fig${f.hero ? ' hero' : ''}"${f.hero ? ` style="--played:${played}%"` : ''}>
       <div class="k">${f.icon ? svgIcon(f.icon) : ''}${f.k}</div>
       <div class="v">${f.v}</div>
@@ -491,6 +511,18 @@ async function loadSaves(page) {
   $('#saves-pager').innerHTML = pagerHtml(page, r.pages);
 }
 
+async function loadLikes(page) {
+  const r = await api(`/api/likes?page=${page}${periodQS()}${themeQS()}`);
+  $('#likes-caption').textContent = r.total ? plural(r.total, 'video') : '';
+  $('#likes').innerHTML = r.items.length ? r.items.map(v => `
+    <li><a class="thumb" href="${watchUrl(v.video_id)}" target="_blank" rel="noopener"><img loading="lazy" alt="" src="${thumb(v.video_id)}">${v.duration_s ? `<span class="dur">${clock(v.duration_s)}</span>` : ''}</a>
+      <div><a class="t" href="${watchUrl(v.video_id)}" target="_blank" rel="noopener">${esc(v.title || v.video_id)}</a>
+      <div class="m">${esc(v.channel_title || '')}</div>
+      <div class="m">${v.day ? `liked ${fmtDate(v.day)}` : 'liked before tracking started'}${v.days_watched ? ` · watched on ${plural(v.days_watched, 'day')}` : ''}${v.favorite ? ' · in Favorites' : ''}</div></div></li>`).join('')
+    : `<li class="note" style="display:block">${periodQS() ? 'No dated likes in this period.' : 'No liked videos yet.'}</li>`;
+  $('#likes-pager').innerHTML = pagerHtml(page, r.pages);
+}
+
 // "On repeat" follows the most specific date context on screen: a chart selection,
 // else the pinned day, else the active period.
 function rewatchContext() {
@@ -795,6 +827,7 @@ async function loadSummary() {
   state.summary = s;
   state.themeList = s.themes.list;
   $('#range-caption').textContent = `${fmtDate(s.range.from)} – ${fmtDate(s.range.to)}`;
+  showPanels(s);
   renderRanges(s);
   renderFigures(s);
   renderActivity(s);
@@ -805,13 +838,19 @@ async function loadSummary() {
   renderThemeYears(state.themeYears);
   markSelected();
   // Every panel follows the active period.
-  loadChannels(0).catch(showError);
-  loadSaves(0).catch(showError);
-  loadSubs(0).catch(showError);
+  const m = s.meta;
+  if (m.first_day) loadChannels(0).catch(showError);
+  if (m.n_favorites) loadSaves(0).catch(showError);
+  if (m.n_likes) loadLikes(0).catch(showError);
+  if (m.n_subs) loadSubs(0).catch(showError);
   renderActiveFilters();
   if (!s.meta.first_day) {
-    $('#day').innerHTML = `<div class="empty-state">${svgIcon('empty')}<strong>Nothing to show yet</strong>
-      Install the browser extension or import your Google Takeout and your history will appear here, day by day.</div>`;
+    const other = m.n_likes || m.n_favorites || m.n_subs;
+    $('#day').innerHTML = other
+      ? `<div class="empty-state">${svgIcon('empty')}<strong>No watch history imported</strong>
+        Turn on “Watch history” in the extension and run a Full import to see what you watched, day by day.</div>`
+      : `<div class="empty-state">${svgIcon('empty')}<strong>Nothing to show yet</strong>
+        Install the browser extension or import your Google Takeout and your history will appear here, day by day.</div>`;
     return;
   }
   await loadMain({ scroll: false });
@@ -951,6 +990,10 @@ function wire() {
   $('#channels-pager').addEventListener('click', e => {
     const b = e.target.closest('[data-page]');
     if (b) loadChannels(Number(b.dataset.page)).catch(showError);
+  });
+  $('#likes-pager').addEventListener('click', e => {
+    const b = e.target.closest('[data-page]');
+    if (b) loadLikes(Number(b.dataset.page)).catch(showError);
   });
   $('#saves-pager').addEventListener('click', e => {
     const b = e.target.closest('[data-page]');
