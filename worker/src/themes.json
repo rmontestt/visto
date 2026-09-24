@@ -1,0 +1,28 @@
+{
+  "_comment": "Visto themes, most specific first. A video gets the first theme whose topics (YouTube topicDetails, Wikipedia slugs) it has; otherwise the first whose categoryIds match; otherwise 'other'. Shared by worker/src/enrich.js and ingest/classify_local.py.",
+  "themes": [
+    { "id": "gaming", "label": "Gaming", "categories": [20],
+      "topics": ["Video_game_culture", "Action_game", "Action-adventure_game", "Casual_game", "Music_video_game", "Puzzle_video_game", "Racing_video_game", "Role-playing_video_game", "Simulation_video_game", "Sports_game", "Strategy_video_game"] },
+    { "id": "comedy", "label": "Comedy", "categories": [23], "topics": ["Humour"] },
+    { "id": "fitness", "label": "Fitness & health", "categories": [], "topics": ["Physical_fitness", "Health"] },
+    { "id": "sports", "label": "Sports", "categories": [17],
+      "topics": ["Sport", "American_football", "Association_football", "Baseball", "Basketball", "Boxing", "Cricket", "Golf", "Ice_hockey", "Mixed_martial_arts", "Professional_wrestling", "Tennis", "Volleyball"] },
+    { "id": "motors", "label": "Cars & motors", "categories": [2], "topics": ["Vehicle", "Motorsport"] },
+    { "id": "music", "label": "Music", "categories": [10],
+      "topics": ["Music", "Christian_music", "Classical_music", "Country_music", "Electronic_music", "Hip_hop_music", "Independent_music", "Jazz", "Music_of_Asia", "Music_of_Latin_America", "Pop_music", "Reggae", "Rhythm_and_blues", "Rock_music", "Soul_music"] },
+    { "id": "film", "label": "Film & TV", "categories": [1, 30, 43, 44], "topics": ["Film", "Television_program"] },
+    { "id": "food", "label": "Food & cooking", "categories": [], "topics": ["Food"] },
+    { "id": "tech", "label": "Technology", "categories": [28], "topics": ["Technology"] },
+    { "id": "science", "label": "Science & education", "categories": [27], "topics": ["Knowledge"] },
+    { "id": "news", "label": "News & politics", "categories": [25], "topics": ["Politics", "Military"] },
+    { "id": "business", "label": "Business & finance", "categories": [], "topics": ["Business"] },
+    { "id": "travel", "label": "Travel", "categories": [19], "topics": ["Tourism"] },
+    { "id": "fashion", "label": "Fashion & beauty", "categories": [], "topics": ["Fashion", "Physical_attractiveness"] },
+    { "id": "pets", "label": "Pets & animals", "categories": [15], "topics": ["Pet"] },
+    { "id": "religion", "label": "Religion", "categories": [], "topics": ["Religion"] },
+    { "id": "hobbies", "label": "Hobbies & DIY", "categories": [26], "topics": ["Hobby"] },
+    { "id": "entertainment", "label": "Entertainment", "categories": [24], "topics": ["Entertainment", "Performing_arts"] },
+    { "id": "lifestyle", "label": "Lifestyle & vlogs", "categories": [22, 21], "topics": ["Lifestyle_(sociology)", "Society"] }
+  ],
+  "fallback": { "id": "other", "label": "Other" }
+}

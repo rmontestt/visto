@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "visto-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/visto.mjs", "start"],
+      "port": 8787
+    }
+  ]
+}

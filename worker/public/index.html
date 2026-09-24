@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Visto</title>
+<meta name="description" content="Your YouTube history: what you watched each day, likes, favorites and habits.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script>
+  try { const t = localStorage.getItem('visto-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><path fill="currentColor" d="M20.87 20.17l-5.59-5.59A7.44 7.44 0 0017 10a7 7 0 10-7 7 7.44 7.44 0 004.58-1.72l5.59 5.59zM4 10a6 6 0 116 6 6 6 0 01-6-6z"/></symbol>
+  <symbol id="i-like" viewBox="0 0 24 24"><path fill="currentColor" d="M3 11h3v10H3V11zm18.77 1.81l-1.5 6.75A3 3 0 0117.34 22H9a1 1 0 01-1-1V10.41a1 1 0 01.29-.7l6.16-6.17a1.5 1.5 0 012.55 1.28L16.18 9H19a3 3 0 012.93 3.65l-.16.16z"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></symbol>
+  <symbol id="i-dislike" viewBox="0 0 24 24"><path fill="currentColor" d="M18 4h3v10h-3V4zM2.23 12.19l1.5-6.75A3 3 0 016.66 3H15a1 1 0 011 1v9.59a1 1 0 01-.29.7l-6.16 6.17a1.5 1.5 0 01-2.55-1.28L7.82 15H5a3 3 0 01-2.93-3.65l.16.16z"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path fill="currentColor" d="M22 13h-4v4h-2v-4h-4v-2h4V7h2v4h4v2zM14 7H2v1h12V7zM2 12h8v-1H2v1zm0 4h8v-1H2v1z"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path fill="currentColor" d="M14.97 16.95L10 13.87V7h2v5.76l4.03 2.49-1.06 1.7zM12 3a9 9 0 00-8.95 8H1l3 3.5L7 11H5.07A7 7 0 1112 19a6.95 6.95 0 01-5.02-2.14l-1.4 1.43A9 9 0 1012 3z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path fill="currentColor" d="M4 20h16v1H3V4h1v16zm3-3h2v-6H7v6zm4 0h2V7h-2v10zm4 0h2v-3h-2v3z"/></symbol>
+  <symbol id="i-channel" viewBox="0 0 24 24"><path fill="currentColor" d="M10 18V6l6 6-6 6zm11-15H3v18h18V3zm-1 17H4V4h16v16z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3a9 9 0 110 18 9 9 0 010-18m0-1a10 10 0 100 20 10 10 0 000-20zm.5 5h-1v6l5.25 3.15.5-.82-4.75-2.83V7z"/></symbol>
+  <symbol id="i-shorts" viewBox="0 0 24 28"><path fill="#ff0033" d="M18.4 1.6a5.5 5.5 0 015.1 3.4 5.4 5.4 0 01-2.4 6.9l-1.7.9c1.6.1 3 .9 3.9 2.2a5.4 5.4 0 01-1.9 7.8l-9.7 5.3a5.5 5.5 0 01-7.4-2.2 5.4 5.4 0 012.2-7.4l1.7-.9A4.7 4.7 0 013.9 15a5.4 5.4 0 011.9-7.8L15.5 2a5.4 5.4 0 012.9-.4z"/><path fill="#fff" d="M9.7 9.4v9.2l7.7-4.6-7.7-4.6z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><path fill="currentColor" d="M12 8a4 4 0 110 8 4 4 0 010-8m0-1a5 5 0 100 10 5 5 0 000-10zm.5-6h-1v3h1V1zm0 19h-1v3h1v-3zM4.22 3.51l-.71.71 2.12 2.12.71-.71-2.12-2.12zm13.44 13.44l-.71.71 2.12 2.12.71-.71-2.12-2.12zM4 11.5H1v1h3v-1zm19 0h-3v1h3v-1zM6.34 17.66l-2.12 2.12.71.71 2.12-2.12-.71-.71zM19.78 4.22l-.71-.71-2.12 2.12.71.71 2.12-2.12z"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path fill="currentColor" d="M20 3v18H8v-1h11V4H8V3h12zm-8.9 12.1l.7.7 4.4-4.4-4.4-4.4-.7.7 3.1 3.1H3v1h11.3l-3.2 3.3z"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path fill="currentColor" d="M14.96 18.96L8 12l6.96-6.96.71.71L9.41 12l6.25 6.25-.7.71z"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path fill="currentColor" d="M9.4 18.4l-.7-.7 5.6-5.6-5.7-5.7.7-.7 6.4 6.4-6.3 6.3z"/></symbol>
+  <symbol id="i-empty" viewBox="0 0 24 24"><path fill="currentColor" d="M10 8.64L15.27 12 10 15.36V8.64M8 5v14l11-7L8 5z"/></symbol>
+</svg>
+
+<header class="topbar">
+  <a class="logo" href="/" aria-label="Visto, home">
+    <svg viewBox="0 0 30 21" aria-hidden="true"><rect width="30" height="21" rx="6" fill="#ff0033"/><path d="M12 6.2v8.6l7.2-4.3z" fill="#fff"/></svg>
+    <b>Visto</b>
+  </a>
+  <form class="search" role="search" id="search-form" autocomplete="off">
+    <label class="sr-only" for="q">Search your history</label>
+    <input id="q" type="search" placeholder="Search your history" aria-controls="search-results">
+    <button class="go" type="submit" aria-label="Search"><svg><use href="#i-search"/></svg></button>
+    <div class="search-results" id="search-results" hidden></div>
+  </form>
+  <div class="top-right">
+    <span class="sync" id="sync" title=""><span class="dot"></span><span class="txt">…</span></span>
+    <button class="icon-btn" id="theme" aria-label="Toggle light / dark theme"><svg><use href="#i-sun"/></svg></button>
+    <a class="icon-btn" href="/logout" aria-label="Log out"><svg><use href="#i-logout"/></svg></a>
+  </div>
+</header>
+
+<main class="page">
+  <div class="chipbar">
+    <div class="chips" id="ranges" role="group" aria-label="Period">
+      <button class="chip" data-range="all" aria-pressed="true">All time</button>
+    </div>
+    <div class="chipbar-right">
+      <span class="range-caption" id="range-caption"></span>
+    </div>
+  </div>
+
+  <div class="active-filters" id="active-filters" aria-live="polite" hidden></div>
+
+  <section class="figures" id="figures" aria-label="Period summary"></section>
+
+  <section class="section" aria-labelledby="h-act">
+    <div class="section-head">
+      <h2 id="h-act"><svg><use href="#i-history"/></svg>Your activity <small id="act-caption"></small></h2>
+      <div class="chips small" id="act-metric" role="group" aria-label="What the bars count"><button class="chip" data-metric="views" aria-pressed="true">Videos</button><button class="chip" data-metric="time" aria-pressed="false" title="Estimated: measured in the browser when available, otherwise the gap to the next video, capped by its length">Time</button></div>
+    </div>
+    <div class="legend" id="act-legend"></div>
+    <div class="chart" id="activity"></div>
+    <details class="data"><summary id="act-table-summary">Show data table</summary><div class="table-scroll" id="act-table"></div></details>
+  </section>
+
+  <section class="section" aria-labelledby="h-themes">
+    <div class="section-head">
+      <h2 id="h-themes"><svg><use href="#i-chart"/></svg>Topics <small id="themes-caption"></small></h2>
+    </div>
+    <div class="themes-grid">
+      <div>
+        <p class="note" style="margin:0 0 8px">In this period · click one to filter; click again to clear</p>
+        <ol class="rank" id="theme-rank"></ol>
+        <button class="chip" id="theme-more" hidden></button>
+      </div>
+      <div class="themes-years">
+        <p class="note" style="margin:0 0 8px">How it changed by year (% of videos)</p>
+        <div class="legend" id="theme-years-legend"></div>
+        <div class="chart" id="theme-years"></div>
+        <details class="data"><summary>Show data table</summary><div class="table-scroll" id="theme-years-table"></div></details>
+      </div>
+    </div>
+  </section>
+
+
+  <div class="columns">
+    <div class="col-main">
+      <section class="section" id="day" aria-live="polite"></section>
+      <section class="section" aria-labelledby="h-rep">
+        <div class="section-head"><h2 id="h-rep"><svg><use href="#i-repeat"/></svg>On repeat <small id="rep-caption"></small></h2></div>
+        <ul class="repeat" id="rewatched"></ul>
+      </section>
+    </div>
+    <aside class="col-side">
+      <section class="section" aria-labelledby="h-ch">
+        <div class="section-head"><h2 id="h-ch"><svg><use href="#i-channel"/></svg>Top channels <small id="channels-caption"></small></h2></div>
+        <ol class="rank" id="channels"></ol>
+        <div class="pager" id="channels-pager"></div>
+      </section>
+      <section class="section" aria-labelledby="h-saves">
+        <div class="section-head"><h2 id="h-saves"><svg><use href="#i-heart"/></svg>Favorites <small id="saves-caption"></small></h2>
+          <div class="chips small" id="saves-sort" role="group" aria-label="Sort favorites"><button class="chip" data-sort="recent" aria-pressed="true">Newest</button><button class="chip" data-sort="watched" aria-pressed="false">Most watched</button></div></div>
+        <ul class="repeat" id="saves" style="margin-top:12px"></ul>
+        <div class="pager" id="saves-pager"></div>
+      </section>
+      <section class="section" aria-labelledby="h-subs">
+        <div class="section-head"><h2 id="h-subs"><svg><use href="#i-channel"/></svg>Subscriptions <small id="subs-caption"></small></h2>
+          <div class="chips small" id="subs-sort" role="group" aria-label="Sort subscriptions"><button class="chip" data-sort="recent" aria-pressed="true">Newest</button><button class="chip" data-sort="watched" aria-pressed="false">Most watched</button></div></div>
+        <ol class="rank" id="subs"></ol>
+        <div class="pager" id="subs-pager"></div>
+      </section>
+      <section class="section" aria-labelledby="h-hours">
+        <div class="section-head"><h2 id="h-hours"><svg><use href="#i-clock"/></svg>When you watch</h2></div>
+        <div class="hours" id="hours"></div>
+        <p class="note" id="hours-note"></p>
+      </section>
+      <section class="section" aria-labelledby="h-fmt">
+        <div class="section-head"><h2 id="h-fmt">Format</h2></div>
+        <div id="formats"></div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="colophon">
+    <span id="coverage"></span>
+    <span>Visto · data from your browser extension and Google Takeout</span>
+  </footer>
+</main>
+
+<div class="tip" id="tip" role="tooltip"></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

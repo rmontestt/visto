@@ -1,0 +1,40 @@
+{
+  // Template configuration, used as is by the local dashboard (`npm start`).
+  // `npm run cloud` copies it to the git-ignored wrangler.local.jsonc with your own
+  // Worker name, D1 database id, time zone and visibility, and deploys that one.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "visto",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  // D1-bound: each page load runs a batch of queries, so run next to the database.
+  "placement": { "mode": "smart" },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // Every request passes the session check first (see PUBLIC_DASHBOARD).
+    "run_worker_first": true
+  },
+  "triggers": {
+    // Hourly metadata enrichment (duration, topics, channel avatars...). Ingestion is
+    // push-based from the browser extension, so nothing here is time-critical.
+    "crons": ["23 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "visto-db",
+      // Placeholder for local use; `npm run cloud` writes the real id to wrangler.local.jsonc.
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "vars": {
+    // IANA time zone your days and hours are counted in. Locally, worker/.dev.vars
+    // (written by `npm start`) sets it from your computer's time zone.
+    "TZ": "UTC",
+    // "1" = anyone with the URL can view the dashboard (read-only); "0" = password.
+    "PUBLIC_DASHBOARD": "0"
+  }
+  // Secrets (set by `npm run cloud`): INGEST_TOKEN, DASHBOARD_PASSWORD, SESSION_SECRET,
+  // and optionally YOUTUBE_API_KEY.
+}

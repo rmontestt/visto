@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local data: never commit watch history, Takeout exports or generated SQL
+data/
+takeout/
+*.db
+*.sqlite
+*.sqlite3
+import*.sql
+
+# Secrets
+.env
+.dev.vars
+*.local
+*.local.*
+extension/config.js
+
+# Wrangler / node
+.wrangler/
+node_modules/
+
+# OS / IDE
+.DS_Store
+.idea/

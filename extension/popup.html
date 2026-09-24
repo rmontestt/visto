@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme:dark; --bg:#212121; --chip:#3f3f3f; --ink:#f1f1f1; --ink2:#aaa; --line:#3a3a3a; --field:#121212; }
+  @media (prefers-color-scheme: light) { :root { color-scheme:light; --bg:#fff; --chip:#f2f2f2; --ink:#0f0f0f; --ink2:#606060; --line:#e5e5e5; --field:#fff; } }
+  body { margin:0; width:300px; padding:14px 16px 16px; background:var(--bg); color:var(--ink);
+         font:13px/1.45 Roboto, Arial, system-ui, sans-serif; }
+  .logo { display:flex; align-items:center; gap:5px; }
+  .logo svg { width:26px; height:18px; }
+  h1 { font-size:18px; margin:0; letter-spacing:-.05em; font-weight:700; }
+  .sub { color:var(--ink2); margin:2px 0 12px; font-size:12px; }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:6px 12px; margin:0 0 12px; padding:12px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+  dt { color:var(--ink2); }
+  dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
+  .err { color:#ff4e45; font-size:12px; margin:0 0 10px; word-break:break-word; }
+  button { width:100%; font:500 13px Roboto, Arial, sans-serif; height:36px; border-radius:18px; cursor:pointer; margin-top:8px;
+           border:0; background:var(--ink); color:var(--bg); }
+  button.ghost { background:var(--chip); color:var(--ink); }
+  button:disabled { opacity:.5; cursor:default; }
+  a { color:var(--ink); }
+  .foot { margin-top:10px; font-size:12px; display:flex; justify-content:space-between; gap:8px; }
+  .link { background:none; border:0; padding:0; width:auto; height:auto; margin:0; color:var(--ink2); text-decoration:underline; font:inherit; }
+  #msg, .deep, .hint { font-size:12px; color:var(--ink2); margin-top:8px; }
+  #msg:empty, .deep:empty { display:none; }
+  textarea { width:100%; box-sizing:border-box; min-height:74px; resize:vertical; font:12px/1.4 ui-monospace, Consolas, monospace;
+             background:var(--field); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px; word-break:break-all; }
+  label { display:block; font-size:12px; color:var(--ink2); margin:0 0 6px; }
+  code { font-size:11px; }
+</style>
+</head>
+<body>
+  <div class="logo"><svg viewBox="0 0 30 21" aria-hidden="true"><rect width="30" height="21" rx="6" fill="#ff0033"/><path d="M12 6.2v8.6l7.2-4.3z" fill="#fff"/></svg><h1>Visto</h1></div>
+  <div class="sub">Collects your YouTube history for your own dashboard</div>
+
+  <!-- Not connected yet: paste the code printed by `npm start` (local) or `npm run cloud` -->
+  <section id="connect" hidden>
+    <label for="code">Connection code</label>
+    <textarea id="code" placeholder="visto:…" spellcheck="false"></textarea>
+    <p class="hint">Run <code>npm start</code> in the Visto folder (or <code>npm run cloud</code> for Cloudflare) and paste the code it prints.</p>
+    <p class="err" id="connect-err" hidden></p>
+    <button id="save">Connect</button>
+    <button id="cancel" class="ghost" hidden>Cancel</button>
+  </section>
+
+  <section id="main" hidden>
+    <dl>
+      <dt>Dashboard</dt><dd id="where">—</dd>
+      <dt>Last sync</dt><dd id="last">—</dd>
+      <dt>History (last read)</dt><dd id="hist">—</dd>
+      <dt>Likes (last read)</dt><dd id="likes">—</dd>
+      <dt>Waiting to send</dt><dd id="queued">—</dd>
+      <dt>Background reads</dt><dd id="bg">—</dd>
+    </dl>
+    <p class="err" id="err" hidden></p>
+    <button id="sync">Sync now</button>
+    <button id="deep" class="ghost">Full import (history and likes)</button>
+    <div id="msg"></div>
+    <div id="deepmsg" class="deep"></div>
+    <div class="foot"><a id="dash" href="#" target="_blank">Open dashboard →</a><button class="link" id="reconnect">Change connection</button></div>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>

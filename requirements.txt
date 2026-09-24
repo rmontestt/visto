@@ -1,0 +1,2 @@
+# zoneinfo needs the IANA database on Windows
+tzdata>=2025.1

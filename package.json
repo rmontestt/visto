@@ -1,0 +1,20 @@
+{
+  "name": "visto",
+  "private": true,
+  "license": "MIT",
+  "description": "Your YouTube watch history as a dashboard: a browser extension plus a Cloudflare Worker you run locally or deploy.",
+  "scripts": {
+    "start": "node scripts/visto.mjs start",
+    "connect": "node scripts/visto.mjs connect",
+    "cloud": "node scripts/visto.mjs cloud",
+    "deploy": "node scripts/visto.mjs wrangler deploy",
+    "tail": "node scripts/visto.mjs wrangler tail",
+    "wrangler": "node scripts/visto.mjs wrangler"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "wrangler": "^4.135.0"
+  }
+}
