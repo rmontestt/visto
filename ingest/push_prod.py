@@ -258,6 +258,25 @@ def read_remote_videos_old():
 
 schema_ok: dict = {}
 
+LEDGER = ROOT / "data" / "push_ledger.json"
+
+
+def read_ledger() -> dict:
+    """What this script wrote on the current UTC day (D1's quota day)."""
+    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    try:
+        led = json.loads(LEDGER.read_text(encoding="utf-8"))
+        if led.get("day") == today:
+            return led
+    except (FileNotFoundError, ValueError):
+        pass
+    return {"day": today, "baseline": 0, "written": 0}
+
+
+def save_ledger(led: dict):
+    LEDGER.parent.mkdir(exist_ok=True)
+    LEDGER.write_text(json.dumps(led, indent=2), encoding="utf-8")
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -271,7 +290,13 @@ def main():
     con = local_db()
     print("Production schema...")
     schema_ok.update(schema_state())
-    used = writes_today()
+    # Cloudflare's usage figures lag behind by a while, so a second run the same day
+    # would still see the morning's number: also count what this script wrote today.
+    reported = writes_today()
+    ledger = read_ledger()
+    used = reported if reported is None else max(reported, ledger["baseline"] + ledger["written"]) if ledger["written"] else reported
+    if reported is not None and not ledger["written"]:
+        ledger["baseline"] = reported
     if args.budget is not None:
         budget = args.budget
     elif used is None:
@@ -331,6 +356,8 @@ def main():
         out.write_text("\n".join(sql) + "\n", encoding="utf-8")
         print(f"Writing {out.name} ({out.stat().st_size / 1e6:.1f} MB)...")
         remote_file(out)
+        ledger["written"] += spent
+        save_ledger(ledger)
     if videos_done and "WHERE" not in (remote("SELECT COALESCE((SELECT sql FROM sqlite_master WHERE name = 'idx_videos_pending'), '') AS s")[0]["s"]):
         print("Videos complete: rebuilding the pending indexes as partial (migration 004)")
         remote_file(ROOT / "worker/migrations/004_partial_pending.sql")

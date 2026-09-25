@@ -113,6 +113,9 @@ this file holds the rules and the traps.
 - Pending indexes are partial on purpose (migration 004).
 - An "All time" summary reads ~1M rows, which is why public answers are cached.
 - `push_prod.py` reads whole tables (~150k rows) per run: plan with it, don't loop it.
+- Cloudflare's usage figures lag behind real writes by a while. `push_prod.py` also counts
+  what it wrote itself on the current UTC day (`data/push_ledger.json`), so a second run
+  the same day doesn't overshoot.
 - Estimate before any bulk write. `push_prod.py` checks the day's usage (GraphQL
   `d1AnalyticsAdaptiveGroups`, wrangler's OAuth token) and stays inside it.
 - Set `YOUTUBE_API_KEY` on a cloud Worker only after a bulk video sync is done, or the cron
